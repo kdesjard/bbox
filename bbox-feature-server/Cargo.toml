@@ -9,6 +9,7 @@ license = "MIT OR Apache-2.0"
 
 [features]
 html = ["bbox-core/html"]
+stac = ["bbox-core/stac"]
 
 [dependencies]
 actix-web = { workspace = true }
