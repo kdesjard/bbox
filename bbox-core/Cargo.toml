@@ -10,6 +10,7 @@ license = "MIT OR Apache-2.0"
 [features]
 html = []
 oidc = ["openidconnect", "reqwest"]
+stac = []
 
 [dependencies]
 actix-cors = "0.7.0"
