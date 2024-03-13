@@ -1,4 +1,6 @@
-use crate::config::{PostgisCollectionCfg, STACAssetCfg};
+use crate::config::PostgisCollectionCfg;
+#[cfg(feature = "stac")]
+use crate::config::STACAssetCfg;
 use crate::datasource::{
     AutoscanCollectionDatasource, CollectionDatasource, CollectionSource, CollectionSourceCfg,
     ConfiguredCollectionCfg, ItemsResult,
@@ -13,7 +15,9 @@ use chrono::SecondsFormat;
 use futures::TryStreamExt;
 use log::{debug, error, info, warn};
 use sqlx::{postgres::PgRow, Postgres, QueryBuilder, Row};
-use std::collections::{HashMap, HashSet};
+#[cfg(feature = "stac")]
+use std::collections::HashMap;
+use std::collections::HashSet;
 
 pub type Datasource = PgDatasource;
 
@@ -78,6 +82,7 @@ impl CollectionDatasource for PgDatasource {
         } else {
             HashSet::new()
         };
+        #[cfg(feature = "stac")]
         let stac_asset_mappings = if let Some(maps) = srccfg.stac_asset_mappings.clone() {
             maps
         } else {
@@ -92,6 +97,7 @@ impl CollectionDatasource for PgDatasource {
             temporal_column,
             temporal_end_column,
             other_columns,
+            #[cfg(feature = "stac")]
             stac_asset_mappings,
         };
 
@@ -170,6 +176,7 @@ pub struct PgCollectionSource {
     temporal_end_column: Option<String>,
     /// Queriable columns.
     other_columns: HashSet<String>,
+    #[cfg(feature = "stac")]
     stac_asset_mappings: HashMap<String, STACAssetCfg>,
 }
 
@@ -382,6 +389,7 @@ impl CollectionSource for PgCollectionSource {
     }
 }
 
+#[allow(unused)]
 fn row_to_feature(row: &PgRow, colsrc: &PgCollectionSource) -> Result<CoreFeature> {
     let properties: serde_json::Value = row.try_get("properties")?;
     // properties[col.name()] = match col.type_info().name() {
