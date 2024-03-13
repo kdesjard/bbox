@@ -2,6 +2,7 @@ use bbox_core::config::{from_config_root_or_exit, NamedDatasourceCfg};
 use bbox_core::pg_ds::DsPostgisCfg;
 use clap::ArgMatches;
 use serde::Deserialize;
+use std::collections::HashMap;
 
 #[derive(Deserialize, Default, Debug)]
 #[serde(default)]
@@ -66,6 +67,15 @@ pub struct PostgisCollectionCfg {
     pub temporal_field: Option<String>,
     pub temporal_end_field: Option<String>,
     pub queryable_fields: Option<Vec<String>>,
+    pub stac_asset_mappings: Option<HashMap<String, STACAssetCfg>>,
+}
+
+#[derive(Deserialize, Default, Clone, Debug)]
+pub struct STACAssetCfg {
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub r#type: Option<String>,
+    pub roles: Option<Vec<String>>,
 }
 
 #[derive(Deserialize, Default, Debug)]
