@@ -98,6 +98,8 @@ impl CollectionDatasource for PgDatasource {
             temporal_end_column,
             other_columns,
             #[cfg(feature = "stac")]
+            collection: id.to_string(),
+            #[cfg(feature = "stac")]
             stac_asset_mappings,
         };
 
@@ -176,6 +178,8 @@ pub struct PgCollectionSource {
     temporal_end_column: Option<String>,
     /// Queriable columns.
     other_columns: HashSet<String>,
+    #[cfg(feature = "stac")]
+    collection: String,
     #[cfg(feature = "stac")]
     stac_asset_mappings: HashMap<String, STACAssetCfg>,
 }
@@ -432,6 +436,8 @@ fn row_to_feature(row: &PgRow, colsrc: &PgCollectionSource) -> Result<CoreFeatur
         links: vec![],
         #[cfg(feature = "stac")]
         assets,
+        #[cfg(feature = "stac")]
+        collection: colsrc.collection.clone(),
     };
 
     Ok(item)
