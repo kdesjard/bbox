@@ -1,4 +1,4 @@
-use crate::config::PostgisCollectionCfg;
+use crate::config::{PostgisCollectionCfg, STACAssetCfg};
 use crate::datasource::{
     AutoscanCollectionDatasource, CollectionDatasource, CollectionSource, CollectionSourceCfg,
     ConfiguredCollectionCfg, ItemsResult,
@@ -13,7 +13,7 @@ use chrono::SecondsFormat;
 use futures::TryStreamExt;
 use log::{debug, error, info, warn};
 use sqlx::{postgres::PgRow, Postgres, QueryBuilder, Row};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 pub type Datasource = PgDatasource;
 
@@ -78,6 +78,11 @@ impl CollectionDatasource for PgDatasource {
         } else {
             HashSet::new()
         };
+        let stac_asset_mappings = if let Some(maps) = srccfg.stac_asset_mappings.clone() {
+            maps
+        } else {
+            HashMap::new()
+        };
 
         let source = PgCollectionSource {
             ds: self.clone(),
@@ -87,6 +92,7 @@ impl CollectionDatasource for PgDatasource {
             temporal_column,
             temporal_end_column,
             other_columns,
+            stac_asset_mappings,
         };
 
         let bbox = source
@@ -164,6 +170,7 @@ pub struct PgCollectionSource {
     temporal_end_column: Option<String>,
     /// Queriable columns.
     other_columns: HashSet<String>,
+    stac_asset_mappings: HashMap<String, STACAssetCfg>,
 }
 
 #[async_trait]
@@ -375,7 +382,7 @@ impl CollectionSource for PgCollectionSource {
     }
 }
 
-fn row_to_feature(row: &PgRow, _table_info: &PgCollectionSource) -> Result<CoreFeature> {
+fn row_to_feature(row: &PgRow, colsrc: &PgCollectionSource) -> Result<CoreFeature> {
     let properties: serde_json::Value = row.try_get("properties")?;
     // properties[col.name()] = match col.type_info().name() {
     //     "VARCHAR"|"TEXT" => json!(row.try_get::<Option<&str>, _>(col.ordinal())?),
@@ -388,6 +395,26 @@ fn row_to_feature(row: &PgRow, _table_info: &PgCollectionSource) -> Result<CoreF
     let geometry: serde_json::Value = row.try_get("geometry")?;
     // ERROR:  lwgeom_to_geojson: 'CurvePolygon' geometry type not supported
     let id: Option<String> = row.try_get("pk")?;
+    #[cfg(feature = "stac")]
+    let assets: HashMap<String, STACAsset> = colsrc
+        .stac_asset_mappings
+        .iter()
+        .map(|(k, v)| {
+            (
+                k.to_owned(),
+                STACAsset {
+                    href: properties[k]
+                        .as_str()
+                        .unwrap_or_else(|| "Missing")
+                        .to_string(),
+                    title: v.title.clone(),
+                    description: v.description.clone(),
+                    roles: v.roles.clone(),
+                    r#type: v.r#type.clone(),
+                },
+            )
+        })
+        .collect();
 
     let item = CoreFeature {
         type_: "Feature".to_string(),
@@ -395,6 +422,8 @@ fn row_to_feature(row: &PgRow, _table_info: &PgCollectionSource) -> Result<CoreF
         geometry,
         properties: Some(properties),
         links: vec![],
+        #[cfg(feature = "stac")]
+        assets,
     };
 
     Ok(item)
