@@ -86,6 +86,7 @@ impl CollectionDatasource for SqliteDatasource {
         }
         let source = GpkgCollectionSource {
             ds: self.clone(),
+            collection: id.to_string(),
             sql,
             geometry_column,
             pk_column,
@@ -167,6 +168,8 @@ pub struct GpkgCollectionSource {
     // geometry_type_name: String,
     /// Primary key column, None if multi column key.
     pk_column: Option<String>,
+    #[cfg(feature = "stac")]
+    collection: String,
 }
 
 #[async_trait]
@@ -287,6 +290,8 @@ fn row_to_feature(row: &SqliteRow, table_info: &GpkgCollectionSource) -> Result<
         links: vec![],
         #[cfg(feature = "stac")]
         assets: HashMap::new(),
+        #[cfg(feature = "stac")]
+        collection: table_info.collection.clone(),
     };
 
     Ok(item)
