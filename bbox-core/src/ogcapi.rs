@@ -1,4 +1,6 @@
 use serde::Serialize;
+#[cfg(feature = "stac")]
+use std::collections::HashMap;
 
 #[derive(Debug, Serialize)]
 /// <http://docs.opengeospatial.org/is/17-069r3/17-069r3.html#_api_landing_page>
@@ -116,7 +118,19 @@ pub struct CoreFeature {
     pub id: Option<String>, // string or integer
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub links: Vec<ApiLink>,
+    #[cfg(feature = "stac")]
+    pub assets: HashMap<String, STACAsset>,
 }
 
 pub type GeoJsonProperties = serde_json::value::Value;
 pub type GeoJsonGeometry = serde_json::value::Value;
+
+#[cfg(feature = "stac")]
+#[derive(Debug, Serialize)]
+pub struct STACAsset {
+    pub href: String,
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub r#type: Option<String>,
+    pub roles: Option<Vec<String>>,
+}
