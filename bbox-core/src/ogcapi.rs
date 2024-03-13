@@ -119,6 +119,7 @@ pub struct CoreFeature {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub links: Vec<ApiLink>,
     #[cfg(feature = "stac")]
+    pub collection: String,
     pub assets: HashMap<String, STACAsset>,
 }
 
