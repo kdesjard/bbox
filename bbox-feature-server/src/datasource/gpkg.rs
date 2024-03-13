@@ -15,6 +15,8 @@ use log::{debug, error, info, warn};
 use serde_json::json;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions, SqliteRow};
 use sqlx::{Column, Row, TypeInfo};
+#[cfg(feature = "stac")]
+use std::collections::HashMap;
 
 #[derive(Clone, Debug)]
 pub struct SqliteDatasource {
@@ -283,6 +285,8 @@ fn row_to_feature(row: &SqliteRow, table_info: &GpkgCollectionSource) -> Result<
         geometry: serde_json::from_str(&geom.0).map_err(|_| error::Error::GeometryFormatError)?,
         properties: Some(properties),
         links: vec![],
+        #[cfg(feature = "stac")]
+        assets: HashMap::new(),
     };
 
     Ok(item)
