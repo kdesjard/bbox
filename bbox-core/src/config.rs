@@ -96,7 +96,7 @@ pub struct WebserverCfg {
     pub server_addr: String,
     /// Number of parallel web server threads. Defaults to number of available logical CPUs
     worker_threads: Option<usize>,
-    public_server_url: Option<String>,
+    pub(crate) public_server_url: Option<String>,
     /// Log level (Default: info)
     pub loglevel: Option<Loglevel>,
     pub tls_cert: Option<String>,
