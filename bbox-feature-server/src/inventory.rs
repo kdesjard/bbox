@@ -141,18 +141,27 @@ impl Inventory {
             type_: "FeatureCollection".to_string(),
             links: vec![
                 ApiLink {
+                    href: format!("{url}/"),
+                    rel: Some("root".to_string()),
+                    type_: Some("application/json".to_string()),
+                    title: Some("The landing page of this server".to_string()),
+                    hreflang: None,
+                    length: None,
+                },
+                ApiLink {
                     href: format!("{url}/collections/{collection_id}/items"),
                     rel: Some("self".to_string()),
-                    type_: Some("text/html".to_string()),
+                    type_: Some("application/geo+json".to_string()),
                     title: Some("this document".to_string()),
                     hreflang: None,
                     length: None,
                 },
                 ApiLink {
-                    href: format!("{url}/collections/{collection_id}/items.json"),
-                    rel: Some("self".to_string()),
+                    href: format!("{url}/collections/{collection_id}"),
+                    rel: Some("collection".to_string()),
                     type_: Some("application/geo+json".to_string()),
-                    title: Some("this document".to_string()),
+                    title: Some("the collection document".to_string()),
+
                     hreflang: None,
                     length: None,
                 },

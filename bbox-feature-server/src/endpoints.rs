@@ -19,14 +19,25 @@ async fn collections(
 ) -> Result<HttpResponse, Error> {
     let url = PUBLIC_SERVER_URL.get().unwrap();
     let collections = CoreCollections {
-        links: vec![ApiLink {
-            href: format!("{url}/collections.json"),
-            rel: Some("self".to_string()),
-            type_: Some("application/json".to_string()),
-            title: Some("this document".to_string()),
-            hreflang: None,
-            length: None,
-        }],
+        links: vec![
+            ApiLink {
+                href: format!("{url}"),
+                rel: Some("root".to_string()),
+                type_: Some("application/json".to_string()),
+                title: Some("landing page".to_string()),
+                hreflang: None,
+                length: None,
+            },
+            ApiLink {
+                href: format!("{url}/collections"),
+                rel: Some("self".to_string()),
+                type_: Some("application/json".to_string()),
+                title: Some("this document".to_string()),
+                hreflang: None,
+                length: None,
+            },
+        ],
+
         //TODO: include also collections from other services
         collections: inventory.collections(), //TODO: convert urls with absurl (?)
     };

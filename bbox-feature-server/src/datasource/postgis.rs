@@ -128,14 +128,32 @@ impl CollectionDatasource for PgDatasource {
             }),
             item_type: None,
             crs: vec![],
-            links: vec![ApiLink {
-                href: format!("{url}/collections/{id}/items"),
-                rel: Some("items".to_string()),
-                type_: Some("application/geo+json".to_string()),
-                title: Some(id.clone()),
-                hreflang: None,
-                length: None,
-            }],
+            links: vec![
+                ApiLink {
+                    href: format!("{url}"),
+                    rel: Some("root".to_string()),
+                    type_: Some("application/geo+json".to_string()),
+                    title: Some("The landing page of this server as JSON".to_string()),
+                    hreflang: None,
+                    length: None,
+                },
+                ApiLink {
+                    href: format!("{url}/collections/{id}"),
+                    rel: Some("self".to_string()),
+                    type_: Some("application/geo+json".to_string()),
+                    title: Some("This document as JSON".to_string()),
+                    hreflang: None,
+                    length: None,
+                },
+                ApiLink {
+                    href: format!("{url}/collections/{id}/items"),
+                    rel: Some("items".to_string()),
+                    type_: Some("application/geo+json".to_string()),
+                    title: Some(id.clone()),
+                    hreflang: None,
+                    length: None,
+                },
+            ],
         };
 
         if !queryable_fields.is_empty() {
@@ -404,6 +422,14 @@ impl CollectionSource for PgCollectionSource {
 
             let url = PUBLIC_SERVER_URL.get().unwrap();
             item.links = vec![
+                ApiLink {
+                    href: format!("{url}"),
+                    rel: Some("root".to_string()),
+                    type_: Some("application/geo+json".to_string()),
+                    title: Some("The landing page of this server as JSON".to_string()),
+                    hreflang: None,
+                    length: None,
+                },
                 ApiLink {
                     href: format!("{url}/collections/{collection_id}/items/{feature_id}"),
                     rel: Some("self".to_string()),
