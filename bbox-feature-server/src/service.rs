@@ -3,6 +3,7 @@ use crate::datasource::Datasources;
 use crate::inventory::Inventory;
 use async_trait::async_trait;
 use bbox_core::cli::{NoArgs, NoCommands};
+use bbox_core::config::PUBLIC_SERVER_URL;
 use bbox_core::config::{error_exit, CoreServiceCfg};
 use bbox_core::metrics::{no_metrics, NoMetrics};
 use bbox_core::ogcapi::{ApiLink, CoreCollection};
@@ -50,8 +51,9 @@ impl OgcApiService for FeatureService {
         classes
     }
     fn landing_page_links(&self, _api_base: &str) -> Vec<ApiLink> {
+        let url = PUBLIC_SERVER_URL.get().unwrap();
         vec![ApiLink {
-            href: "/collections".to_string(),
+            href: format!("{url}/collections"),
             rel: Some("data".to_string()),
             type_: Some("application/json".to_string()),
             title: Some("Information about the feature collections".to_string()),

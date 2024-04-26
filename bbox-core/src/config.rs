@@ -12,6 +12,8 @@ use serde::{Deserialize, Serialize};
 use std::env;
 use std::path::PathBuf;
 
+pub static PUBLIC_SERVER_URL: OnceCell<String> = OnceCell::new();
+
 /// Application configuration singleton
 pub fn app_config() -> &'static Figment {
     static CONFIG: OnceCell<Figment> = OnceCell::new();
@@ -122,13 +124,16 @@ pub struct CorsCfg {
 impl ServiceConfig for CoreServiceCfg {
     fn initialize(args: &ArgMatches) -> Result<Self, ConfigError> {
         let mut cfg: CoreServiceCfg = from_config_root_or_exit();
+        let mut webserver = cfg.webserver.unwrap_or_default();
+        PUBLIC_SERVER_URL
+            .set(webserver.public_server_url.clone().unwrap_or_default())
+            .unwrap();
         if let Ok(args) = GlobalArgs::from_arg_matches(args) {
             if let Some(loglevel) = args.loglevel {
-                let mut webserver = cfg.webserver.unwrap_or_default();
                 webserver.loglevel = Some(loglevel);
-                cfg.webserver = Some(webserver);
             }
         };
+        cfg.webserver = Some(webserver);
         Ok(cfg)
     }
 }

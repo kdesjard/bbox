@@ -1,6 +1,7 @@
 use crate::config::CollectionsCfg;
 use crate::datasource::{gpkg::SqliteDatasource, AutoscanCollectionDatasource, CollectionSource};
 use crate::filter_params::FilterParams;
+use bbox_core::config::PUBLIC_SERVER_URL;
 use bbox_core::file_search;
 use bbox_core::ogcapi::*;
 use bbox_core::pg_ds::PgDatasource;
@@ -135,11 +136,12 @@ impl Inventory {
                 return None;
             }
         };
+        let url = PUBLIC_SERVER_URL.get().unwrap();
         let mut features = CoreFeatures {
             type_: "FeatureCollection".to_string(),
             links: vec![
                 ApiLink {
-                    href: format!("/collections/{collection_id}/items"),
+                    href: format!("{url}/collections/{collection_id}/items"),
                     rel: Some("self".to_string()),
                     type_: Some("text/html".to_string()),
                     title: Some("this document".to_string()),
@@ -147,7 +149,7 @@ impl Inventory {
                     length: None,
                 },
                 ApiLink {
-                    href: format!("/collections/{collection_id}/items.json"),
+                    href: format!("{url}/collections/{collection_id}/items.json"),
                     rel: Some("self".to_string()),
                     type_: Some("application/geo+json".to_string()),
                     title: Some("this document".to_string()),
@@ -164,7 +166,7 @@ impl Inventory {
             let mut add_link = |link: FilterParams, rel: &str| {
                 let params = link.as_args();
                 features.links.push(ApiLink {
-                    href: format!("/collections/{collection_id}/items{params}"),
+                    href: format!("{url}/collections/{collection_id}/items{params}"),
                     rel: Some(rel.to_string()),
                     type_: Some("text/html".to_string()),
                     title: Some(rel.to_string()),

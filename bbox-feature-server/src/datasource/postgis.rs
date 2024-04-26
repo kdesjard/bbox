@@ -9,6 +9,7 @@ use crate::error::{Error, Result};
 use crate::filter_params::{FilterParams, TemporalType};
 use crate::inventory::FeatureCollection;
 use async_trait::async_trait;
+use bbox_core::config::PUBLIC_SERVER_URL;
 use bbox_core::ogcapi::*;
 use bbox_core::pg_ds::PgDatasource;
 use chrono::DateTime;
@@ -112,6 +113,8 @@ impl CollectionDatasource for PgDatasource {
             .await
             .unwrap_or(vec![-180.0, -90.0, 180.0, 90.0]);
 
+        let url = PUBLIC_SERVER_URL.get().unwrap();
+
         let mut collection = CoreCollection {
             id: id.clone(),
             title: Some(id.clone()),
@@ -126,7 +129,7 @@ impl CollectionDatasource for PgDatasource {
             item_type: None,
             crs: vec![],
             links: vec![ApiLink {
-                href: format!("/collections/{id}/items"),
+                href: format!("{url}/collections/{id}/items"),
                 rel: Some("items".to_string()),
                 type_: Some("application/geo+json".to_string()),
                 title: Some(id.clone()),
@@ -137,7 +140,7 @@ impl CollectionDatasource for PgDatasource {
 
         if !queryable_fields.is_empty() {
             collection.links.push(ApiLink {
-                href: format!("/collections/{id}/queryables"),
+                href: format!("{url}/collections/{id}/queryables"),
                 rel: Some("http://www.opengis.net/def/rel/ogc/1.0/queryables".to_string()),
                 type_: Some("application/schema+json".to_string()),
                 title: Some(id.clone()),
@@ -398,9 +401,11 @@ impl CollectionSource for PgCollectionSource {
             .await?
         {
             let mut item = row_to_feature(&row, self)?;
+
+            let url = PUBLIC_SERVER_URL.get().unwrap();
             item.links = vec![
                 ApiLink {
-                    href: format!("/collections/{collection_id}/items/{feature_id}"),
+                    href: format!("{url}/collections/{collection_id}/items/{feature_id}"),
                     rel: Some("self".to_string()),
                     type_: Some("application/geo+json".to_string()),
                     title: Some("this document".to_string()),
@@ -408,7 +413,7 @@ impl CollectionSource for PgCollectionSource {
                     length: None,
                 },
                 ApiLink {
-                    href: format!("/collections/{collection_id}"),
+                    href: format!("{url}/collections/{collection_id}"),
                     rel: Some("collection".to_string()),
                     type_: Some("application/geo+json".to_string()),
                     title: Some("the collection document".to_string()),
@@ -437,8 +442,9 @@ impl CollectionSource for PgCollectionSource {
                 )
             })
             .collect();
+        let url = PUBLIC_SERVER_URL.get().unwrap();
         Ok(Some(Queryables {
-            id: format!("/collections/{collection_id}/queryables"),
+            id: format!("{url}/collections/{collection_id}/queryables"),
             title: Some(collection_id.to_string()),
             schema: "http://json-schema.org/draft/2019-09/schema".to_string(),
             type_: "object".to_string(),
