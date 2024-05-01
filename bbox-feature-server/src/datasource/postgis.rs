@@ -133,7 +133,10 @@ impl CollectionDatasource for PgDatasource {
         }
         let temporal_extents: Option<CoreExtentTemporal> = match srccfg.temporal_extents.to_owned()
         {
-            Some(t) => Some(t.into()),
+            Some(t) => Some(
+                t.try_into()
+                    .map_err(|e: &str| Error::DatasourceSetupError(e.to_string()))?,
+            ),
             None => None,
         };
         let url = PUBLIC_SERVER_URL.get().unwrap();
