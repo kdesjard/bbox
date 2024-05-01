@@ -95,28 +95,30 @@ pub struct CoreExtentTemporal {
 }
 
 // deal with the lack nulls in toml
-impl From<Vec<Vec<String>>> for CoreExtentTemporal {
-    fn from(intervals: Vec<Vec<String>>) -> Self {
-        let interval = intervals
+impl TryFrom<Vec<Vec<String>>> for CoreExtentTemporal {
+    type Error = &'static str;
+    fn try_from(intervals: Vec<Vec<String>>) -> Result<Self, Self::Error> {
+        let intervals: Result<Vec<Vec<Option<String>>>, &str> = intervals
             .iter()
             .map(|o| {
                 o.iter()
                     .map(|i| {
                         if i.is_empty() {
-                            None
+                            Ok(None)
                         } else {
-                            // validate
-                            //DateTime:: parse_from_rfc3339(i);
-                            Some(i.to_string())
+                            match DateTime::parse_from_rfc3339(i) {
+                                Ok(_dt) => Ok(Some(i.to_string())),
+                                Err(_) => Err("no good".into()),
+                            }
                         }
                     })
                     .collect()
             })
             .collect();
-        CoreExtentTemporal {
-            interval,
+        Ok(CoreExtentTemporal {
+            interval: intervals?,
             trs: None,
-        }
+        })
     }
 }
 
