@@ -1,5 +1,5 @@
+use chrono::DateTime;
 use serde::Deserialize;
-use serde::Deserializer;
 use serde::Serialize;
 use std::collections::HashMap;
 
@@ -89,7 +89,7 @@ pub struct CoreExtentSpatial {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct CoreExtentTemporal {
-    pub intervals: Vec<Vec<Option<String>>>, // date-time
+    pub interval: Vec<Vec<Option<String>>>, // date-time
     #[serde(skip_serializing_if = "Option::is_none")]
     pub trs: Option<String>,
 }
@@ -97,7 +97,7 @@ pub struct CoreExtentTemporal {
 // deal with the lack nulls in toml
 impl From<Vec<Vec<String>>> for CoreExtentTemporal {
     fn from(intervals: Vec<Vec<String>>) -> Self {
-        let intervals = intervals
+        let interval = intervals
             .iter()
             .map(|o| {
                 o.iter()
@@ -105,6 +105,8 @@ impl From<Vec<Vec<String>>> for CoreExtentTemporal {
                         if i.is_empty() {
                             None
                         } else {
+                            // validate
+                            //DateTime:: parse_from_rfc3339(i);
                             Some(i.to_string())
                         }
                     })
@@ -112,7 +114,7 @@ impl From<Vec<Vec<String>>> for CoreExtentTemporal {
             })
             .collect();
         CoreExtentTemporal {
-            intervals,
+            interval,
             trs: None,
         }
     }
