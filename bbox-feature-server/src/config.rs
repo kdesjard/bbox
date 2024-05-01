@@ -2,6 +2,8 @@ use bbox_core::config::{from_config_root_or_exit, ConfigError, DsPostgisCfg, Nam
 use bbox_core::service::ServiceConfig;
 use clap::ArgMatches;
 use serde::Deserialize;
+#[cfg(feature = "stac")]
+use std::collections::HashMap;
 
 #[derive(Deserialize, Default, Debug)]
 #[serde(default)]
@@ -33,10 +35,12 @@ pub struct DsFiledirCfg {
 pub struct ConfiguredCollectionCfg {
     pub name: String,
     pub title: Option<String>,
-    pub description: Option<String>,
+    pub description: String,
     // extent: Option<CoreExtent>
     #[serde(flatten)]
     pub source: CollectionSourceCfg,
+    #[cfg(feature = "stac")]
+    pub license: String,
 }
 
 /// Collections with configuration
@@ -70,6 +74,11 @@ pub struct PostgisCollectionCfg {
     /// Fields which can be used in filter expressions
     #[serde(default)]
     pub queryable_fields: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    //    pub temporal_extents: Option<CoreExtentTemporal>,
+    pub temporal_extents: Option<Vec<Vec<String>>>,
+    #[cfg(feature = "stac")]
+    pub stac_asset_mappings: Option<HashMap<String, STACAssetCfg>>,
 }
 
 #[derive(Deserialize, Default, Debug)]
@@ -83,6 +92,14 @@ pub struct GpkgCollectionCfg {
     pub fid_field: Option<String>,
     pub geometry_field: Option<String>,
     //pub field_list: Option<Vec<String>>,
+}
+
+#[derive(Deserialize, Default, Clone, Debug)]
+pub struct STACAssetCfg {
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub r#type: Option<String>,
+    pub roles: Option<Vec<String>>,
 }
 
 impl ServiceConfig for FeatureServiceCfg {

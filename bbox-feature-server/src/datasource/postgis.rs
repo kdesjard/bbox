@@ -1,6 +1,8 @@
 //! PostGIS feature source.
 
 use crate::config::PostgisCollectionCfg;
+#[cfg(feature = "stac")]
+use crate::config::STACAssetCfg;
 use crate::datasource::{
     AutoscanCollectionDatasource, CollectionDatasource, CollectionSource, CollectionSourceCfg,
     ConfiguredCollectionCfg, ItemsResult,
@@ -97,15 +99,25 @@ impl CollectionDatasource for PgDatasource {
             };
             other_columns.insert(k.clone(), queryable_type);
         }
+        #[cfg(feature = "stac")]
+        let stac_asset_mappings = if let Some(maps) = srccfg.stac_asset_mappings.clone() {
+            maps
+        } else {
+            HashMap::new()
+        };
 
         let source = PgCollectionSource {
             ds: self.clone(),
             sql,
             geometry_column,
             pk_column,
-            temporal_column,
+            temporal_column: temporal_column.clone(),
             temporal_end_column,
             other_columns,
+            #[cfg(feature = "stac")]
+            collection: id.to_string(),
+            #[cfg(feature = "stac")]
+            stac_asset_mappings,
         };
 
         let bbox = source
@@ -113,6 +125,17 @@ impl CollectionDatasource for PgDatasource {
             .await
             .unwrap_or(vec![-180.0, -90.0, 180.0, 90.0]);
 
+        #[cfg(feature = "stac")]
+        if srccfg.temporal_extents.is_none() {
+            return Err(Error::DatasourceSetupError(format!(
+                "temporal_extents is a required configuration item for stac compliance"
+            )));
+        }
+        let temporal_extents: Option<CoreExtentTemporal> = match srccfg.temporal_extents.to_owned()
+        {
+            Some(t) => Some(t.into()),
+            None => None,
+        };
         let url = PUBLIC_SERVER_URL.get().unwrap();
 
         let mut collection = CoreCollection {
@@ -124,7 +147,7 @@ impl CollectionDatasource for PgDatasource {
                     bbox: vec![bbox],
                     crs: None,
                 }),
-                temporal: None,
+                temporal: temporal_extents,
             }),
             item_type: None,
             crs: vec![],
@@ -154,6 +177,12 @@ impl CollectionDatasource for PgDatasource {
                     length: None,
                 },
             ],
+            #[cfg(feature = "stac")]
+            stac_version: "1.0.0".to_string(),
+            #[cfg(feature = "stac")]
+            stac_type: STACType::Collection,
+            #[cfg(feature = "stac")]
+            license: cfg.license.clone(),
         };
 
         if !queryable_fields.is_empty() {
@@ -197,7 +226,9 @@ impl AutoscanCollectionDatasource for PgDatasource {
                 }),
                 name: table_name.clone(),
                 title: Some(table_name),
-                description: None,
+                description: String::new(),
+                #[cfg(feature = "stac")]
+                license: String::new(),
             };
             let fc = self.setup_collection(&coll_cfg, None).await?;
             collections.push(fc);
@@ -217,6 +248,10 @@ pub struct PgCollectionSource {
     temporal_end_column: Option<String>,
     /// Queriable columns.
     other_columns: HashMap<String, QueryableType>,
+    #[cfg(feature = "stac")]
+    collection: String,
+    #[cfg(feature = "stac")]
+    stac_asset_mappings: HashMap<String, STACAssetCfg>,
 }
 
 #[async_trait]
@@ -479,7 +514,7 @@ impl CollectionSource for PgCollectionSource {
     }
 }
 
-fn row_to_feature(row: &PgRow, _table_info: &PgCollectionSource) -> Result<CoreFeature> {
+fn row_to_feature(row: &PgRow, colsrc: &PgCollectionSource) -> Result<CoreFeature> {
     let properties: serde_json::Value = row.try_get("properties")?;
     // properties[col.name()] = match col.type_info().name() {
     //     "VARCHAR"|"TEXT" => json!(row.try_get::<Option<&str>, _>(col.ordinal())?),
@@ -492,6 +527,26 @@ fn row_to_feature(row: &PgRow, _table_info: &PgCollectionSource) -> Result<CoreF
     let geometry: serde_json::Value = row.try_get("geometry")?;
     // ERROR:  lwgeom_to_geojson: 'CurvePolygon' geometry type not supported
     let id: Option<String> = row.try_get("pk")?;
+    #[cfg(feature = "stac")]
+    let assets: HashMap<String, STACAsset> = colsrc
+        .stac_asset_mappings
+        .iter()
+        .map(|(k, v)| {
+            (
+                k.to_owned(),
+                STACAsset {
+                    href: properties[k]
+                        .as_str()
+                        .unwrap_or_else(|| "Missing")
+                        .to_string(),
+                    title: v.title.clone(),
+                    description: v.description.clone(),
+                    roles: v.roles.clone(),
+                    r#type: v.r#type.clone(),
+                },
+            )
+        })
+        .collect();
 
     let item = CoreFeature {
         type_: "Feature".to_string(),
@@ -499,6 +554,12 @@ fn row_to_feature(row: &PgRow, _table_info: &PgCollectionSource) -> Result<CoreF
         geometry,
         properties: Some(properties),
         links: vec![],
+        #[cfg(feature = "stac")]
+        stac_version: "1.0.0".to_string(),
+        #[cfg(feature = "stac")]
+        assets,
+        #[cfg(feature = "stac")]
+        collection: colsrc.collection.clone(),
     };
 
     Ok(item)
@@ -529,6 +590,28 @@ impl PgCollectionSource {
         ];
         Ok(extent)
     }
+    /*
+    // pub interval: Vec<Vec<Option<String>>>, // date-time
+    async fn query_temporal(&self) -> Result<Vec<Vec<String>>> {
+        let Some(ref temporal_column) = self.temporal_column else {
+            return Err(Error::DatasourceSetupError(format!("Temporal column not defined")))
+        };
+        let sql = &format!(
+            r#"
+        WITH query AS ({sql}),
+          SELECT min({temporal_column}),max({temporal_column})
+          FROM query
+    "#,
+            sql = &self.sql,
+        );
+        let row = sqlx::query(sql).fetch_one(&self.ds.pool).await?;
+        let extent: Vec<DateTime<Utc>> = vec![
+            row.try_get(0)?,
+            row.try_get(1)?,
+        ];
+        Ok(extent)
+    }
+    */
 }
 
 async fn detect_pk(ds: &PgDatasource, schema: &str, table: &str) -> Result<Option<String>> {

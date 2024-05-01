@@ -1,3 +1,5 @@
+use serde::Deserialize;
+use serde::Deserializer;
 use serde::Serialize;
 use std::collections::HashMap;
 
@@ -51,8 +53,8 @@ pub struct CoreCollection {
     pub id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
+    //    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: String,
     pub links: Vec<ApiLink>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub extent: Option<CoreExtent>,
@@ -60,6 +62,14 @@ pub struct CoreCollection {
     pub item_type: Option<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub crs: Vec<String>,
+    #[cfg(feature = "stac")]
+    #[serde(rename = "type")]
+    pub stac_type: STACType,
+    #[cfg(feature = "stac")]
+    #[serde(rename = "stac_version")]
+    pub stac_version: String,
+    #[cfg(feature = "stac")]
+    pub license: String,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -77,11 +87,35 @@ pub struct CoreExtentSpatial {
     pub crs: Option<String>,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct CoreExtentTemporal {
-    pub interval: Vec<Vec<Option<String>>>, // date-time
+    pub intervals: Vec<Vec<Option<String>>>, // date-time
     #[serde(skip_serializing_if = "Option::is_none")]
     pub trs: Option<String>,
+}
+
+// deal with the lack nulls in toml
+impl From<Vec<Vec<String>>> for CoreExtentTemporal {
+    fn from(intervals: Vec<Vec<String>>) -> Self {
+        let intervals = intervals
+            .iter()
+            .map(|o| {
+                o.iter()
+                    .map(|i| {
+                        if i.is_empty() {
+                            None
+                        } else {
+                            Some(i.to_string())
+                        }
+                    })
+                    .collect()
+            })
+            .collect();
+        CoreExtentTemporal {
+            intervals,
+            trs: None,
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -117,6 +151,12 @@ pub struct CoreFeature {
     pub id: Option<String>, // string or integer
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub links: Vec<ApiLink>,
+    #[cfg(feature = "stac")]
+    pub stac_version: String,
+    #[cfg(feature = "stac")]
+    pub collection: String,
+    #[cfg(feature = "stac")]
+    pub assets: HashMap<String, STACAsset>,
 }
 
 #[derive(Debug, Serialize)]
@@ -162,3 +202,21 @@ pub enum QueryableType {
 
 pub type GeoJsonProperties = serde_json::value::Value;
 pub type GeoJsonGeometry = serde_json::value::Value;
+
+#[cfg(feature = "stac")]
+#[derive(Debug, Serialize)]
+pub struct STACAsset {
+    pub href: String,
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub r#type: Option<String>,
+    pub roles: Option<Vec<String>>,
+}
+
+#[cfg(feature = "stac")]
+#[derive(Clone, Debug, Serialize)]
+pub enum STACType {
+    Catalog,
+    Collection,
+    Feature,
+}
