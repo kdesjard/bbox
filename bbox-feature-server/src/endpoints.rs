@@ -4,6 +4,8 @@ use crate::service::FeatureService;
 use actix_web::{web, Error, HttpRequest, HttpResponse};
 use bbox_core::api::OgcApiInventory;
 use bbox_core::config::PUBLIC_SERVER_URL;
+#[cfg(feature = "stac")]
+use bbox_core::ogcapi::STACCatalog;
 use bbox_core::ogcapi::{ApiLink, CoreCollections};
 use bbox_core::service::ServiceEndpoints;
 use bbox_core::templates::{create_env_embedded, html_accepted, render_endpoint};
@@ -239,5 +241,73 @@ impl ServiceEndpoints for FeatureService {
                 web::resource("/collections/{collectionId}/items/{featureId}")
                     .route(web::get().to(feature)),
             );
+        #[cfg(feature = "stac")]
+        cfg.service(web::resource("/catalog").route(web::get().to(catalog)))
+            .service(web::resource("/catalog.json").route(web::get().to(catalog)));
+    }
+}
+
+#[cfg(feature = "stac")]
+async fn catalog(
+    _ogcapi: web::Data<OgcApiInventory>,
+    inventory: web::Data<Inventory>,
+    req: HttpRequest,
+) -> Result<HttpResponse, Error> {
+    let mut collection_links: Vec<ApiLink> = inventory
+        .collections()
+        .iter()
+        .map(|c| ApiLink {
+            href: format!("/collections/{}", c.id),
+            rel: Some("child".to_string()),
+            type_: Some("application/json".to_string()),
+            title: None,
+            hreflang: None,
+            length: None,
+        })
+        .collect();
+    let mut catalog = STACCatalog {
+        id: "Not sure".to_string(),
+        r#type: "Catalog".to_string(),
+        title: Some("Not Sure".to_string()),
+        description: "domethigngierngei".to_string(),
+        stac_version: "1.0.0".to_string(),
+        stac_extensions: None,
+        links: vec![
+            ApiLink {
+                href: "./catalog.json".to_string(),
+                rel: Some("root".to_string()),
+                type_: Some("application/json".to_string()),
+                title: Some("this document".to_string()),
+                hreflang: None,
+                length: None,
+            },
+            ApiLink {
+                href: "/collections".to_string(),
+                rel: Some("collections".to_string()),
+                type_: Some("application/json".to_string()),
+                title: Some("collections".to_string()),
+                hreflang: None,
+                length: None,
+            },
+            ApiLink {
+                href: absurl(&req, "/catalog.json"),
+                rel: Some("self".to_string()),
+                type_: Some("application/json".to_string()),
+                title: Some("this document".to_string()),
+                hreflang: None,
+                length: None,
+            },
+        ],
+    };
+    catalog.links.append(&mut collection_links);
+    if html_accepted(&req).await {
+        render_endpoint(
+            &TEMPLATES,
+            "catalog.html",
+            context!(cur_menu=>"Catalog", catalog => &catalog),
+        )
+        .await
+    } else {
+        Ok(HttpResponse::Ok().json(catalog))
     }
 }
