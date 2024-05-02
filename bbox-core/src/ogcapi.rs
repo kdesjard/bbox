@@ -210,6 +210,20 @@ pub type GeoJsonProperties = serde_json::value::Value;
 pub type GeoJsonGeometry = serde_json::value::Value;
 
 #[cfg(feature = "stac")]
+#[derive(Clone, Debug, Serialize)]
+pub struct STACCatalog {
+    pub id: String,
+    pub r#type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    pub description: String,
+    pub stac_version: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stac_extensions: Option<Vec<String>>,
+    pub links: Vec<ApiLink>,
+}
+
+#[cfg(feature = "stac")]
 #[derive(Debug, Serialize)]
 pub struct STACAsset {
     pub href: String,
