@@ -266,14 +266,14 @@ impl CollectionSource for PgCollectionSource {
             QueryBuilder::new(format!("WITH query AS ({sql})\n", sql = &self.sql));
         let select_sql = if let Some(pk) = &self.pk_column {
             format!(
-                r#"SELECT to_jsonb(t.*)-'{geometry_column}'-'{pk}' AS properties, ST_AsGeoJSON({geometry_column})::jsonb AS geometry,
+                r#"SELECT to_jsonb(t.*)-'{geometry_column}'-'{pk}' AS properties, ST_AsGeoJSON({geometry_column})::jsonb AS geometry, st_envelope({geometry_column}) as bbox,
                     "{pk}"::varchar AS pk,
                       count(*) OVER () AS __total_cnt 
                    FROM query t"#,
             )
         } else {
             format!(
-                r#"SELECT to_jsonb(t.*)-'{geometry_column}' AS properties, ST_AsGeoJSON({geometry_column})::jsonb AS geometry,
+                r#"SELECT to_jsonb(t.*)-'{geometry_column}' AS properties, ST_AsGeoJSON({geometry_column})::jsonb AS geometry, st_envelope({geometry_column}) as bbox,
                       NULL AS pk,
                       --row_number() OVER () ::varchar AS pk,
                       count(*) OVER () AS __total_cnt 
@@ -444,13 +444,14 @@ impl CollectionSource for PgCollectionSource {
         let sql = format!(
             r#"
             WITH query AS ({sql})
-            SELECT to_jsonb(t.*)-'{geometry_column}'-'{pk}' AS properties, ST_AsGeoJSON({geometry_column})::jsonb AS geometry,
+            SELECT to_jsonb(t.*)-'{geometry_column}'-'{pk}' AS properties, ST_AsGeoJSON({geometry_column})::jsonb AS geometry, st_envelope({geometry_column}) as bbox,
                 "{pk}"::varchar AS pk
                FROM query t
                WHERE {pk}::varchar = '{feature_id}'"#,
             sql = &self.sql,
             geometry_column = &self.geometry_column,
         );
+        debug!("{sql}");
         if let Some(row) = sqlx::query(&sql)
             // .bind(feature_id)
             .fetch_optional(&self.ds.pool)
@@ -528,6 +529,19 @@ fn row_to_feature(row: &PgRow, colsrc: &PgCollectionSource) -> Result<CoreFeatur
     //     ty => json!(format!("<{ty}>")),
     // }
     let geometry: serde_json::Value = row.try_get("geometry")?;
+
+    let bbox: geozero::wkb::Decode<geo_types::Geometry<f64>> = row.try_get("bbox")?;
+    let bbox = match bbox.geometry {
+        Some(g) => {
+            let polygon: geo_types::Polygon =
+                g.try_into().map_err(|_| Error::GeometryFormatError)?;
+            let exterior = polygon.into_inner().0;
+            let points = exterior.into_points();
+            vec![points[0].x(), points[0].y(), points[2].x(), points[2].y()]
+        }
+        None => vec![],
+    };
+
     // ERROR:  lwgeom_to_geojson: 'CurvePolygon' geometry type not supported
     let id: Option<String> = row.try_get("pk")?;
     #[cfg(feature = "stac")]
@@ -563,6 +577,8 @@ fn row_to_feature(row: &PgRow, colsrc: &PgCollectionSource) -> Result<CoreFeatur
         assets,
         #[cfg(feature = "stac")]
         collection: colsrc.collection.clone(),
+        #[cfg(feature = "stac")]
+        bbox,
     };
 
     Ok(item)
