@@ -22,7 +22,8 @@ chrono = { workspace = true }
 clap = { workspace = true }
 dyn-clone = "1.0.6"
 futures = { workspace = true }
-geozero = { workspace = true, features = [ "with-gpkg", "with-postgis-sqlx" ] }
+geo-types = "0.7.13"
+geozero = { workspace = true, features = ["with-gpkg", "with-postgis-sqlx"] }
 log = { workspace = true }
 minijinja = { workspace = true }
 once_cell = { workspace = true }
