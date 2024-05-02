@@ -161,6 +161,8 @@ pub struct CoreFeature {
     pub collection: String,
     #[cfg(feature = "stac")]
     pub assets: HashMap<String, STACAsset>,
+    #[cfg(feature = "stac")]
+    pub bbox: Vec<f64>,
 }
 
 #[derive(Debug, Serialize)]
