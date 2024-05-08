@@ -253,23 +253,32 @@ async fn catalog(
     inventory: web::Data<Inventory>,
     req: HttpRequest,
 ) -> Result<HttpResponse, Error> {
-    let mut collection_links: Vec<ApiLink> = inventory
-        .collections()
+    let catalog_cfg = inventory.catalog();
+
+    let mut collection_links: Vec<ApiLink> = catalog_cfg
+        .collections
         .iter()
-        .map(|c| ApiLink {
-            href: format!("/collections/{}", c.id),
-            rel: Some("child".to_string()),
-            type_: Some("application/json".to_string()),
-            title: None,
-            hreflang: None,
-            length: None,
+        .filter_map(|c| {
+            if let Some(coll) = inventory.core_collection(c) {
+                Some(ApiLink {
+                    href: format!("/collections/{}", coll.id),
+                    rel: Some("child".to_string()),
+                    type_: Some("application/json".to_string()),
+                    title: None,
+                    hreflang: None,
+                    length: None,
+                })
+            } else {
+                None
+            }
         })
         .collect();
+
     let mut catalog = STACCatalog {
-        id: "Not sure".to_string(),
+        id: catalog_cfg.title.clone(),
         r#type: "Catalog".to_string(),
-        title: Some("Not Sure".to_string()),
-        description: "domethigngierngei".to_string(),
+        title: Some(catalog_cfg.title),
+        description: catalog_cfg.description,
         stac_version: "1.0.0".to_string(),
         stac_extensions: None,
         links: vec![
