@@ -33,6 +33,7 @@ impl OgcApiService for FeatureService {
                 .unwrap_or_else(error_exit);
             inventory.add_collection(collection);
         }
+        inventory.set_catalog(config.catalog.to_owned());
         FeatureService { inventory }
     }
     fn conformance_classes(&self) -> Vec<String> {
