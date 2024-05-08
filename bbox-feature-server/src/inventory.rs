@@ -1,4 +1,5 @@
 use crate::config::CollectionsCfg;
+use crate::config::STACCatalogCfg;
 use crate::datasource::{gpkg::SqliteDatasource, AutoscanCollectionDatasource, CollectionSource};
 use crate::filter_params::FilterParams;
 use bbox_core::config::PUBLIC_SERVER_URL;
@@ -26,6 +27,7 @@ use std::collections::HashMap;
 pub struct Inventory {
     // Key: collection_id
     feat_collections: HashMap<String, FeatureCollection>,
+    catalog: STACCatalogCfg,
 }
 
 #[derive(Clone)]
@@ -39,6 +41,7 @@ impl Inventory {
     pub fn new() -> Self {
         Inventory {
             feat_collections: HashMap::new(),
+            catalog: STACCatalogCfg::default(),
         }
     }
 
@@ -94,6 +97,10 @@ impl Inventory {
         let id = fc.collection.id.clone();
         // TODO: Handle name collisions
         self.feat_collections.insert(id, fc);
+    }
+
+    pub fn set_catalog(&mut self, cat: STACCatalogCfg) {
+        self.catalog = cat;
     }
 
     fn add_collections(&mut self, feat_collections: Vec<FeatureCollection>) {
@@ -224,6 +231,11 @@ impl Inventory {
                 None
             }
         }
+    }
+
+    /// Return all collections as vector
+    pub fn catalog(&self) -> STACCatalogCfg {
+        self.catalog.clone()
     }
 }
 
