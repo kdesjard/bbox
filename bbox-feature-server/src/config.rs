@@ -14,6 +14,8 @@ pub struct FeatureServiceCfg {
     pub auto_collections: CollectionsCfg,
     #[serde(rename = "collection")]
     pub collections: Vec<ConfiguredCollectionCfg>,
+    #[serde(rename = "catalog")]
+    pub catalog: STACCatalogCfg,
 }
 
 /// Collections with auto-detection
@@ -92,6 +94,15 @@ pub struct GpkgCollectionCfg {
     pub fid_field: Option<String>,
     pub geometry_field: Option<String>,
     //pub field_list: Option<Vec<String>>,
+}
+
+/// Catalog
+#[derive(Clone, Deserialize, Default, Debug)]
+#[serde(default, deny_unknown_fields)]
+pub struct STACCatalogCfg {
+    pub title: String,
+    pub description: String,
+    pub collections: Vec<String>,
 }
 
 #[derive(Deserialize, Default, Clone, Debug)]
