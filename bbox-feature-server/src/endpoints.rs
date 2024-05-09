@@ -254,14 +254,14 @@ async fn catalog(
     req: HttpRequest,
 ) -> Result<HttpResponse, Error> {
     let catalog_cfg = inventory.catalog();
-
+    let url = PUBLIC_SERVER_URL.get().unwrap();
     let mut collection_links: Vec<ApiLink> = catalog_cfg
         .collections
         .iter()
         .filter_map(|c| {
             if let Some(coll) = inventory.core_collection(c) {
                 Some(ApiLink {
-                    href: format!("/collections/{}", coll.id),
+                    href: format!("{url}/collections/{}", coll.id),
                     rel: Some("child".to_string()),
                     type_: Some("application/json".to_string()),
                     title: None,
@@ -283,7 +283,7 @@ async fn catalog(
         stac_extensions: None,
         links: vec![
             ApiLink {
-                href: "./catalog.json".to_string(),
+                href: format!("{url}/catalog.json"),
                 rel: Some("root".to_string()),
                 type_: Some("application/json".to_string()),
                 title: Some("this document".to_string()),
@@ -291,7 +291,7 @@ async fn catalog(
                 length: None,
             },
             ApiLink {
-                href: "/collections".to_string(),
+                href: format!("{url}/collections"),
                 rel: Some("collections".to_string()),
                 type_: Some("application/json".to_string()),
                 title: Some("collections".to_string()),
@@ -299,7 +299,7 @@ async fn catalog(
                 length: None,
             },
             ApiLink {
-                href: absurl(&req, "/catalog.json"),
+                href: format!("{url}/catalog.json"),
                 rel: Some("self".to_string()),
                 type_: Some("application/json".to_string()),
                 title: Some("this document".to_string()),
