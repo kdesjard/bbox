@@ -266,14 +266,14 @@ impl CollectionSource for PgCollectionSource {
             QueryBuilder::new(format!("WITH query AS ({sql})\n", sql = &self.sql));
         let select_sql = if let Some(pk) = &self.pk_column {
             format!(
-                r#"SELECT to_jsonb(t.*)-'{geometry_column}'-'{pk}' AS properties, ST_AsGeoJSON({geometry_column})::jsonb AS geometry, st_envelope({geometry_column}) as bbox,
+                r#"SELECT to_jsonb(t.*)-'{geometry_column}'-'{pk}' AS properties, ST_AsGeoJSON({geometry_column})::jsonb AS geometry, st_envelope({geometry_column}::geometry) as bbox,
                     "{pk}"::varchar AS pk,
                       count(*) OVER () AS __total_cnt 
                    FROM query t"#,
             )
         } else {
             format!(
-                r#"SELECT to_jsonb(t.*)-'{geometry_column}' AS properties, ST_AsGeoJSON({geometry_column})::jsonb AS geometry, st_envelope({geometry_column}) as bbox,
+                r#"SELECT to_jsonb(t.*)-'{geometry_column}' AS properties, ST_AsGeoJSON({geometry_column})::jsonb AS geometry, st_envelope({geometry_column}::geometry) as bbox,
                       NULL AS pk,
                       --row_number() OVER () ::varchar AS pk,
                       count(*) OVER () AS __total_cnt 
@@ -444,7 +444,7 @@ impl CollectionSource for PgCollectionSource {
         let sql = format!(
             r#"
             WITH query AS ({sql})
-            SELECT to_jsonb(t.*)-'{geometry_column}'-'{pk}' AS properties, ST_AsGeoJSON({geometry_column})::jsonb AS geometry, st_envelope({geometry_column}) as bbox,
+            SELECT to_jsonb(t.*)-'{geometry_column}'-'{pk}' AS properties, ST_AsGeoJSON({geometry_column})::jsonb AS geometry, st_envelope({geometry_column}::geometry) as bbox,
                 "{pk}"::varchar AS pk
                FROM query t
                WHERE {pk}::varchar = '{feature_id}'"#,
