@@ -530,7 +530,9 @@ fn row_to_feature(row: &PgRow, colsrc: &PgCollectionSource) -> Result<CoreFeatur
     // }
     let geometry: serde_json::Value = row.try_get("geometry")?;
 
+    #[cfg(feature = "stac")]
     let bbox: geozero::wkb::Decode<geo_types::Geometry<f64>> = row.try_get("bbox")?;
+    #[cfg(feature = "stac")]
     let bbox = match bbox.geometry {
         Some(g) => {
             let polygon: geo_types::Polygon =
