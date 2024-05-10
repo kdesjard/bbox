@@ -457,35 +457,7 @@ impl CollectionSource for PgCollectionSource {
             .fetch_optional(&self.ds.pool)
             .await?
         {
-            let mut item = row_to_feature(&row, self)?;
-
-            let url = PUBLIC_SERVER_URL.get().unwrap();
-            item.links = vec![
-                ApiLink {
-                    href: format!("{url}"),
-                    rel: Some("root".to_string()),
-                    type_: Some("application/geo+json".to_string()),
-                    title: Some("The landing page of this server as JSON".to_string()),
-                    hreflang: None,
-                    length: None,
-                },
-                ApiLink {
-                    href: format!("{url}/collections/{collection_id}/items/{feature_id}"),
-                    rel: Some("self".to_string()),
-                    type_: Some("application/geo+json".to_string()),
-                    title: Some("this document".to_string()),
-                    hreflang: None,
-                    length: None,
-                },
-                ApiLink {
-                    href: format!("{url}/collections/{collection_id}"),
-                    rel: Some("collection".to_string()),
-                    type_: Some("application/geo+json".to_string()),
-                    title: Some("the collection document".to_string()),
-                    hreflang: None,
-                    length: None,
-                },
-            ];
+            let item = row_to_feature(&row, self)?;
             Ok(Some(item))
         } else {
             Ok(None)
@@ -567,12 +539,52 @@ fn row_to_feature(row: &PgRow, colsrc: &PgCollectionSource) -> Result<CoreFeatur
         })
         .collect();
 
+    let url = PUBLIC_SERVER_URL.get().unwrap();
+    let collection_id = &colsrc.collection;
+    let links = vec![
+        ApiLink {
+            href: format!("{url}"),
+            rel: Some("root".to_string()),
+            type_: Some("application/geo+json".to_string()),
+            title: Some("The landing page of this server as JSON".to_string()),
+            hreflang: None,
+            length: None,
+        },
+        ApiLink {
+            href: format!(
+                "{url}/collections/{collection_id}/items/{}",
+                id.clone().unwrap_or_default()
+            ),
+            rel: Some("self".to_string()),
+            type_: Some("application/geo+json".to_string()),
+            title: Some("this document".to_string()),
+            hreflang: None,
+            length: None,
+        },
+        ApiLink {
+            href: format!("{url}/collections/{collection_id}"),
+            rel: Some("collection".to_string()),
+            type_: Some("application/geo+json".to_string()),
+            title: Some("the collection document".to_string()),
+            hreflang: None,
+            length: None,
+        },
+        ApiLink {
+            href: format!("{url}/collections/{collection_id}"),
+            rel: Some("parent".to_string()),
+            type_: Some("application/geo+json".to_string()),
+            title: Some("the collection document".to_string()),
+            hreflang: None,
+            length: None,
+        },
+    ];
+
     let item = CoreFeature {
         type_: "Feature".to_string(),
         id,
         geometry,
         properties: Some(properties),
-        links: vec![],
+        links,
         #[cfg(feature = "stac")]
         stac_version: "1.0.0".to_string(),
         #[cfg(feature = "stac")]
