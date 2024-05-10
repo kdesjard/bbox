@@ -55,7 +55,7 @@ impl OgcApiService for FeatureService {
         let url = PUBLIC_SERVER_URL.get().unwrap();
         vec![ApiLink {
             href: format!("{url}/collections"),
-            rel: Some("data".to_string()),
+            rel: Some("collections".to_string()),
             type_: Some("application/json".to_string()),
             title: Some("Information about the feature collections".to_string()),
             hreflang: None,
