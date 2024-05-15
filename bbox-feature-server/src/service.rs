@@ -53,14 +53,25 @@ impl OgcApiService for FeatureService {
     }
     fn landing_page_links(&self, _api_base: &str) -> Vec<ApiLink> {
         let url = PUBLIC_SERVER_URL.get().unwrap();
-        vec![ApiLink {
-            href: format!("{url}/collections"),
-            rel: Some("collections".to_string()),
-            type_: Some("application/json".to_string()),
-            title: Some("Information about the feature collections".to_string()),
-            hreflang: None,
-            length: None,
-        }]
+        vec![
+            #[cfg(feature = "stac")]
+            ApiLink {
+                href: format!("{url}/catalog"),
+                rel: Some("catalog".to_string()),
+                type_: Some("application/json".to_string()),
+                title: Some("Information about the catalog".to_string()),
+                hreflang: None,
+                length: None,
+            },
+            ApiLink {
+                href: format!("{url}/collections"),
+                rel: Some("collections".to_string()),
+                type_: Some("application/json".to_string()),
+                title: Some("Information about the feature collections".to_string()),
+                hreflang: None,
+                length: None,
+            },
+        ]
     }
     fn collections(&self) -> Vec<CoreCollection> {
         self.inventory.collections()
