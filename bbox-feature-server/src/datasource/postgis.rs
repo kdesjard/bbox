@@ -693,8 +693,10 @@ async fn detect_geometry(ds: &PgDatasource, schema: &str, table: &str) -> Result
 }
 
 async fn check_query(ds: &PgDatasource, sql: String) -> Result<String> {
-    debug!("Collection query: {sql}");
-    if let Err(e) = sqlx::query(&sql).fetch_one(&ds.pool).await {
+    let mut limited_sql = sql.clone();
+    limited_sql.push_str(" LIMIT 1");
+    debug!("Collection query: {limited_sql}");
+    if let Err(e) = sqlx::query(&limited_sql).fetch_one(&ds.pool).await {
         error!("Error in collection query `{sql}`: {e}");
         return Err(e.into());
     }
@@ -706,7 +708,9 @@ async fn get_column_info(
     sql: &str,
     cols: Option<&Vec<String>>,
 ) -> Result<HashMap<String, PgTypeInfo>> {
-    match sqlx::query(sql).fetch_one(&ds.pool).await {
+    let mut limited_sql = sql.to_string();
+    limited_sql.push_str(" LIMIT 1");
+    match sqlx::query(&limited_sql).fetch_one(&ds.pool).await {
         Ok(res) => {
             let mut hm = HashMap::new();
             for col in res.columns() {
