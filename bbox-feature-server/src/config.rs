@@ -76,6 +76,7 @@ pub struct PostgisCollectionCfg {
     /// Fields which can be used in filter expressions
     #[serde(default)]
     pub queryable_fields: Vec<String>,
+    pub max_results: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     //    pub temporal_extents: Option<CoreExtentTemporal>,
     pub temporal_extents: Option<Vec<Vec<String>>>,
