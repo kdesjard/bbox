@@ -4,8 +4,8 @@ use std::collections::HashMap;
 #[derive(Debug, Deserialize, Default, Clone)]
 pub struct FilterParams {
     // Pagination
-    pub limit: Option<u32>,
-    pub offset: Option<u32>,
+    pub limit: Option<u64>,
+    pub offset: Option<u64>,
     // Filters
     pub bbox: Option<String>,
     pub datetime: Option<String>,
@@ -19,10 +19,10 @@ pub enum TemporalType {
 }
 
 impl FilterParams {
-    pub fn limit_or_default(&self) -> u32 {
+    pub fn limit_or_default(&self) -> u64 {
         self.limit.unwrap_or(50)
     }
-    pub fn with_offset(&self, offset: u32) -> FilterParams {
+    pub fn with_offset(&self, offset: u64) -> FilterParams {
         let mut params = self.clone();
         params.offset = Some(offset);
         params
