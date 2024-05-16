@@ -104,6 +104,6 @@ impl Datasources {
 #[derive(Debug)]
 pub struct ItemsResult {
     pub features: Vec<CoreFeature>,
-    pub number_matched: u64,
+    pub number_matched: Option<u64>,
     pub number_returned: u64,
 }
