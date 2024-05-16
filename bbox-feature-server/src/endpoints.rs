@@ -121,7 +121,7 @@ async fn features(
         let datetime = filters.remove("datetime");
 
         let offset = if let Some(offset_str) = filters.get("offset") {
-            match offset_str.parse::<u32>() {
+            match offset_str.parse::<u64>() {
                 Ok(o) => {
                     filters.remove("offset");
                     Some(o)
@@ -132,7 +132,7 @@ async fn features(
             None
         };
         let limit = if let Some(limit_str) = filters.get("limit") {
-            match limit_str.parse::<u32>() {
+            match limit_str.parse::<u64>() {
                 Ok(o) => {
                     filters.remove("limit");
                     Some(o)
