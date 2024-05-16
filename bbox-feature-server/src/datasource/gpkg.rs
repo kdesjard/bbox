@@ -215,7 +215,7 @@ impl CollectionSource for GpkgCollectionSource {
             .collect::<Result<Vec<_>>>()?;
         let result = ItemsResult {
             features: items,
-            number_matched,
+            number_matched: Some(number_matched),
             number_returned,
         };
         Ok(result)
