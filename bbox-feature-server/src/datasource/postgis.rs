@@ -114,6 +114,7 @@ impl CollectionDatasource for PgDatasource {
             temporal_column: temporal_column.clone(),
             temporal_end_column,
             other_columns,
+            max_results: srccfg.max_results,
             #[cfg(feature = "stac")]
             collection: id.to_string(),
             #[cfg(feature = "stac")]
@@ -251,6 +252,7 @@ pub struct PgCollectionSource {
     temporal_end_column: Option<String>,
     /// Queriable columns.
     other_columns: HashMap<String, QueryableType>,
+    max_results: Option<u64>,
     #[cfg(feature = "stac")]
     collection: String,
     #[cfg(feature = "stac")]
@@ -262,8 +264,20 @@ impl CollectionSource for PgCollectionSource {
     async fn items(&self, filter: &FilterParams) -> Result<ItemsResult> {
         let geometry_column = &self.geometry_column;
         let temporal_column = &self.temporal_column;
+        let mut limit = filter.limit_or_default();
+        let offset = filter.offset;
+        let mut limited_sql = self.sql.clone();
+        if let Some(max) = self.max_results {
+            if limit > max {
+                limit = max;
+            }
+            limited_sql.push_str(&format!(" LIMIT {limit}"));
+            if offset.is_some() {
+                limited_sql.push_str(&format!(" OFFSET {}", offset.unwrap()));
+            }
+        }
         let mut builder: QueryBuilder<Postgres> =
-            QueryBuilder::new(format!("WITH query AS ({sql})\n", sql = &self.sql));
+            QueryBuilder::new(format!("WITH query AS ({limited_sql})\n"));
         let select_sql = if let Some(pk) = &self.pk_column {
             format!(
                 r#"SELECT to_jsonb(t.*)-'{geometry_column}'-'{pk}' AS properties, ST_AsGeoJSON({geometry_column})::jsonb AS geometry, st_envelope({geometry_column}::geometry) as bbox,
@@ -404,24 +418,29 @@ impl CollectionSource for PgCollectionSource {
                 return Err(Error::QueryParams);
             }
         }
-        let limit = filter.limit_or_default();
         if limit > 0 {
             builder.push(" LIMIT ");
             debug!("LIMIT {limit}");
             builder.push_bind(limit as i64);
         }
-        if let Some(offset) = filter.offset {
+        /*
+        if offset.is_some() {
+            let offset = offset.unwrap();
             builder.push(" OFFSET ");
             debug!("OFFSET {offset}");
             builder.push_bind(offset as i64);
         }
+        */
         debug!("SQL: {}", builder.sql());
         let query = builder.build();
         let rows = query.fetch_all(&self.ds.pool).await?;
-        let number_matched = if let Some(row) = rows.first() {
-            row.try_get::<i64, _>("__total_cnt")? as u64
-        } else {
-            0
+        let number_matched = match self.max_results {
+            Some(_m) => None,
+            None => Some(if let Some(row) = rows.first() {
+                row.try_get::<i64, _>("__total_cnt")? as u64
+            } else {
+                0
+            }),
         };
         let number_returned = rows.len() as u64;
         let items = rows
