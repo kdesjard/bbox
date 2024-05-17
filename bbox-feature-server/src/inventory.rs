@@ -174,27 +174,37 @@ impl Inventory {
                 },
             ],
             time_stamp: None, // time when the response was generated
-            number_matched: Some(items.number_matched),
+            number_matched: items.number_matched,
             number_returned: Some(items.number_returned),
             features: items.features,
         };
-        if items.number_matched > items.number_returned {
-            let mut add_link = |link: FilterParams, rel: &str| {
-                let params = link.as_args();
-                features.links.push(ApiLink {
-                    href: format!("{url}/collections/{collection_id}/items{params}"),
-                    rel: Some(rel.to_string()),
-                    type_: Some("text/html".to_string()),
-                    title: Some(rel.to_string()),
-                    hreflang: None,
-                    length: None,
-                });
-            };
-
+        let mut add_link = |link: FilterParams, rel: &str| {
+            let params = link.as_args();
+            features.links.push(ApiLink {
+                href: format!("{url}/collections/{collection_id}/items{params}"),
+                rel: Some(rel.to_string()),
+                type_: Some("text/html".to_string()),
+                title: Some(rel.to_string()),
+                hreflang: None,
+                length: None,
+            });
+        };
+        if items.number_matched > Some(items.number_returned) {
             if let Some(prev) = filter.prev() {
                 add_link(prev, "prev");
             }
-            if let Some(next) = filter.next(items.number_matched) {
+            if let Some(next) = filter.next(items.number_matched?) {
+                add_link(next, "next");
+            }
+        } else {
+            let limit = filter.limit_or_default();
+            let offset = filter.offset.unwrap_or(0);
+            let limit = if limit > items.number_returned {
+                items.number_returned
+            } else {
+                limit
+            };
+            if let Some(next) = filter.next(offset + limit + 1) {
                 add_link(next, "next");
             }
         }
