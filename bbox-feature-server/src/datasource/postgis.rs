@@ -113,6 +113,7 @@ impl CollectionDatasource for PgDatasource {
             pk_column,
             temporal_column: temporal_column.clone(),
             temporal_end_column,
+            ordering_column: srccfg.ordering_field.to_owned(),
             other_columns,
             max_results: srccfg.max_results,
             #[cfg(feature = "stac")]
@@ -250,6 +251,7 @@ pub struct PgCollectionSource {
     pk_column: Option<String>,
     temporal_column: Option<String>,
     temporal_end_column: Option<String>,
+    ordering_column: Option<String>,
     /// Queriable columns.
     other_columns: HashMap<String, QueryableType>,
     max_results: Option<u64>,
@@ -266,39 +268,19 @@ impl CollectionSource for PgCollectionSource {
         let temporal_column = &self.temporal_column;
         let mut limit = filter.limit_or_default();
         let offset = filter.offset;
-        let mut limited_sql = self.sql.clone();
-        if let Some(max) = self.max_results {
-            if limit > max {
-                limit = max;
-            }
-            limited_sql.push_str(&format!(" LIMIT {limit}"));
-            if offset.is_some() {
-                limited_sql.push_str(&format!(" OFFSET {}", offset.unwrap()));
-            }
-        }
-        let mut builder: QueryBuilder<Postgres> =
-            QueryBuilder::new(format!("WITH query AS ({limited_sql})\n"));
-        let select_sql = if let Some(pk) = &self.pk_column {
-            format!(
-                r#"SELECT to_jsonb(t.*)-'{geometry_column}'-'{pk}' AS properties, ST_AsGeoJSON({geometry_column})::jsonb AS geometry, st_envelope({geometry_column}::geometry) as bbox,
-                    "{pk}"::varchar AS pk,
-                      count(*) OVER () AS __total_cnt 
-                   FROM query t"#,
-            )
-        } else {
-            format!(
-                r#"SELECT to_jsonb(t.*)-'{geometry_column}' AS properties, ST_AsGeoJSON({geometry_column})::jsonb AS geometry, st_envelope({geometry_column}::geometry) as bbox,
-                      NULL AS pk,
-                      --row_number() OVER () ::varchar AS pk,
-                      count(*) OVER () AS __total_cnt 
-               FROM query t"#,
-            )
-        };
-        builder.push(&select_sql);
-        let mut where_term = false;
+        let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(format!("WITH query AS (\n"));
+
+        builder.push(&self.sql);
+        let mut where_term = self.sql.to_lowercase().contains("where");
+
         match filter.bbox() {
             Ok(Some(bbox)) => {
-                builder.push(format!(" WHERE ( {geometry_column} && ST_MakeEnvelope("));
+                if where_term {
+                    builder.push(" AND ");
+                } else {
+                    builder.push(" WHERE ");
+                }
+                builder.push(format!(" ( {geometry_column} && ST_MakeEnvelope("));
                 let mut separated = builder.separated(",");
                 separated.push_bind(bbox[0]);
                 separated.push_bind(bbox[1]);
@@ -327,7 +309,7 @@ impl CollectionSource for PgCollectionSource {
                         if let TemporalType::DateTime(dt) = parts[0] {
                             builder.push(format!(" {temporal_column} = ",));
                             builder.push_bind(dt);
-                            debug!("{temporal_column} = {}", dt);
+                            debug!("{temporal_column} = {dt}");
                         }
                     } else {
                         match parts[0] {
@@ -339,22 +321,22 @@ impl CollectionSource for PgCollectionSource {
                                 TemporalType::DateTime(dt) => {
                                     builder.push(format!(" {temporal_column} <= ",));
                                     builder.push_bind(dt);
-                                    debug!("{temporal_column} <= {}", dt);
+                                    debug!("{temporal_column} <= {dt}");
                                 }
                             },
                             TemporalType::DateTime(dt1) => match parts[1] {
                                 TemporalType::Open => {
                                     builder.push(format!(" {temporal_column} >= ",));
                                     builder.push_bind(dt1);
-                                    debug!("{temporal_column} >= {}", dt1);
+                                    debug!("{temporal_column} >= {dt1}");
                                 }
                                 TemporalType::DateTime(dt2) => {
                                     builder.push(format!(" {temporal_column} >= "));
                                     builder.push_bind(dt1);
-                                    debug!("{temporal_column} >= {}", dt1);
+                                    debug!("{temporal_column} >= {dt1}");
                                     builder.push(format!(" and {temporal_end_column} <= ",));
                                     builder.push_bind(dt2);
-                                    debug!("{temporal_column} <= {}", dt2);
+                                    debug!("{temporal_column} <= {dt2}");
                                 }
                             },
                         }
@@ -385,11 +367,11 @@ impl CollectionSource for PgCollectionSource {
                         if val.rfind('*').is_some() {
                             separated.push(format!("{k}::text like "));
                             let val = val.replace('*', "%");
-                            debug!("{k}::text like {val}");
+                            debug!("{k}::text like {val} - {v:#?}");
                             separated.push_bind_unseparated(val);
                         } else {
                             separated.push(format!("{k}="));
-                            debug!("{k} = {val}");
+                            debug!("{k} = {val} - {v:#?}");
                             match v {
                                 QueryableType::String => separated.push_bind_unseparated(val),
                                 QueryableType::Integer => separated.push_bind_unseparated(
@@ -418,6 +400,40 @@ impl CollectionSource for PgCollectionSource {
                 return Err(Error::QueryParams);
             }
         }
+
+        if let Some(ord) = &self.ordering_column {
+            builder.push(&format!(" ORDER BY {ord}"));
+        }
+
+        if let Some(max) = self.max_results {
+            if limit > max {
+                limit = max;
+            }
+            builder.push(&format!(" LIMIT {limit}"));
+            if offset.is_some() {
+                builder.push(&format!(" OFFSET {}", offset.unwrap()));
+            }
+        }
+        builder.push(") ");
+        let inner_sql = builder.sql();
+        debug!("Inner SQL: {inner_sql}");
+        let select_sql = if let Some(pk) = &self.pk_column {
+            format!(
+                r#"SELECT to_jsonb(t.*)-'{geometry_column}'-'{pk}' AS properties, ST_AsGeoJSON({geometry_column})::jsonb AS geometry, st_envelope({geometry_column}::geometry) as bbox,
+                    "{pk}"::varchar AS pk,
+                      count(*) OVER () AS __total_cnt
+                   FROM query t"#,
+            )
+        } else {
+            format!(
+                r#"SELECT to_jsonb(t.*)-'{geometry_column}' AS properties, ST_AsGeoJSON({geometry_column})::jsonb AS geometry, st_envelope({geometry_column}::geometry) as bbox,
+                      NULL AS pk,
+                      --row_number() OVER () ::varchar AS pk,
+                      count(*) OVER () AS __total_cnt
+               FROM query t"#,
+            )
+        };
+        builder.push(&select_sql);
         if limit > 0 {
             builder.push(" LIMIT ");
             debug!("LIMIT {limit}");
