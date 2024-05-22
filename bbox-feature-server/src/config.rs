@@ -73,6 +73,8 @@ pub struct PostgisCollectionCfg {
     pub temporal_field: Option<String>,
     /// Field used for temporal end filter expressions
     pub temporal_end_field: Option<String>,
+    /// Field used for ordering the results
+    pub ordering_field: Option<String>,
     /// Fields which can be used in filter expressions
     #[serde(default)]
     pub queryable_fields: Vec<String>,
