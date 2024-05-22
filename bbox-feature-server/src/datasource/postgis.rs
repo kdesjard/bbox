@@ -75,17 +75,17 @@ impl CollectionDatasource for PgDatasource {
         if pk_column.is_none() {
             warn!("Datasource `{id}`: `fid_field` missing - single item queries will be ignored");
         }
-        let mut queryable_fields = srccfg.queryable_fields.clone();
+        let mut queryable_field_map = srccfg.queryable_field_mappings.clone();
         if let Some(ref t) = temporal_column {
-            queryable_fields.push(t.clone());
+            queryable_field_map.insert(t.clone(), t.clone());
         }
         if let Some(ref t) = temporal_end_column {
-            queryable_fields.push(t.clone());
+            queryable_field_map.insert(t.clone(), t.clone());
         }
-        let queryables_types = get_column_info(self, &sql, Some(&queryable_fields)).await?;
+        let queryables_types = get_column_info(self, &sql, &queryable_field_map).await?;
         let mut other_columns = HashMap::new();
-        for (k, v) in &queryables_types {
-            let queryable_type = match v.to_string().as_str() {
+        for (k, (v, t)) in &queryables_types {
+            let queryable_type = match t.to_string().as_str() {
                 "TEXT" | "VARCHAR" | "CHAR" => QueryableType::String,
                 "INT4" | "INT8" => QueryableType::Integer,
                 "FLOAT4" | "FLOAT8" => QueryableType::Number,
@@ -97,7 +97,7 @@ impl CollectionDatasource for PgDatasource {
                     )))
                 }
             };
-            other_columns.insert(k.clone(), queryable_type);
+            other_columns.insert(k.clone(), (v.clone(), queryable_type));
         }
         #[cfg(feature = "stac")]
         let stac_asset_mappings = if let Some(maps) = srccfg.stac_asset_mappings.clone() {
@@ -190,7 +190,7 @@ impl CollectionDatasource for PgDatasource {
             license: cfg.license.clone(),
         };
 
-        if !queryable_fields.is_empty() {
+        if queryable_field_map.keys().len() > 0 {
             collection.links.push(ApiLink {
                 href: format!("{url}/collections/{id}/queryables"),
                 rel: Some("http://www.opengis.net/def/rel/ogc/1.0/queryables".to_string()),
@@ -253,7 +253,7 @@ pub struct PgCollectionSource {
     temporal_end_column: Option<String>,
     ordering_column: Option<String>,
     /// Queriable columns.
-    other_columns: HashMap<String, QueryableType>,
+    other_columns: HashMap<String, (String, QueryableType)>,
     max_results: Option<u64>,
     #[cfg(feature = "stac")]
     collection: String,
@@ -364,15 +364,16 @@ impl CollectionSource for PgCollectionSource {
                     // check if the passed in field matches queryables
                     // detect if value has wildcards
                     if let Some((k, v)) = self.other_columns.get_key_value(key) {
+                        let (colname, coltype) = v;
                         if val.rfind('*').is_some() {
-                            separated.push(format!("{k}::text like "));
+                            separated.push(format!("{colname}::text like "));
                             let val = val.replace('*', "%");
-                            debug!("{k}::text like {val} - {v:#?}");
+                            debug!("{k}::text like {val} - {coltype:#?}");
                             separated.push_bind_unseparated(val);
                         } else {
-                            separated.push(format!("{k}="));
-                            debug!("{k} = {val} - {v:#?}");
-                            match v {
+                            separated.push(format!("{colname}="));
+                            debug!("{k} = {val} - {coltype:#?}");
+                            match coltype {
                                 QueryableType::String => separated.push_bind_unseparated(val),
                                 QueryableType::Integer => separated.push_bind_unseparated(
                                     val.parse::<i64>().map_err(|_| Error::QueryParams)?,
@@ -508,7 +509,7 @@ impl CollectionSource for PgCollectionSource {
                     title.clone(),
                     QueryableProperty {
                         title: Some(title),
-                        type_: Some(s.1.clone()),
+                        type_: Some(s.1 .1.clone()),
                         format: None,
                     },
                 )
@@ -741,22 +742,23 @@ async fn check_query(ds: &PgDatasource, sql: String) -> Result<String> {
 async fn get_column_info(
     ds: &PgDatasource,
     sql: &str,
-    cols: Option<&Vec<String>>,
-) -> Result<HashMap<String, PgTypeInfo>> {
+    colmap: &HashMap<String, String>,
+) -> Result<HashMap<String, (String, PgTypeInfo)>> {
     let mut limited_sql = sql.to_string();
     limited_sql.push_str(" LIMIT 1");
     match sqlx::query(&limited_sql).fetch_one(&ds.pool).await {
         Ok(res) => {
-            let mut hm = HashMap::new();
+            let mut tmphm = HashMap::new();
             for col in res.columns() {
                 let colname = col.name().to_string();
-                if let Some(filter_cols) = cols {
-                    if !filter_cols.contains(&colname) {
-                        continue;
-                    }
+                let type_info = col.type_info().clone();
+                tmphm.insert(colname, type_info);
+            }
+            let mut hm = HashMap::new();
+            for (k, v) in colmap.to_owned() {
+                if let Some(t) = tmphm.remove(&k) {
+                    hm.insert(k, (v, t));
                 }
-                let type_info = col.type_info();
-                hm.insert(colname, type_info.clone());
             }
             Ok(hm)
         }
