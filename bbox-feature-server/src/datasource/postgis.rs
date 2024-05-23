@@ -43,8 +43,6 @@ impl CollectionDatasource for PgDatasource {
         } else if srccfg.table_name.is_some() && srccfg.sql.is_some() {
             warn!("Datasource`{id}`: configuration `table_name` ignored, using `sql` instead");
         }
-        let temporal_column = srccfg.temporal_field.clone();
-        let temporal_end_column = srccfg.temporal_end_field.clone();
         let (pk_column, geometry_column, sql) = if let Some(table_name) = &srccfg.table_name {
             let public = "public".to_string();
             let table_schema = srccfg.table_schema.as_ref().unwrap_or(&public);
@@ -99,13 +97,22 @@ impl CollectionDatasource for PgDatasource {
         } else {
             HashMap::new()
         };
-        let temporal_column = if let Some(tc) = temporal_column {
-            queryable_field_map.remove(&tc)
+
+        let temporal_column = if let Some(tc) = &srccfg.temporal_field {
+            if queryable_field_map.contains_key(tc) {
+                queryable_field_map.remove(tc)
+            } else {
+                Some(tc.clone())
+            }
         } else {
             None
         };
-        let temporal_end_column = if let Some(tc) = temporal_end_column {
-            queryable_field_map.remove(&tc)
+        let temporal_end_column = if let Some(tc) = &srccfg.temporal_end_field {
+            if queryable_field_map.contains_key(tc) {
+                queryable_field_map.remove(tc)
+            } else {
+                Some(tc.clone())
+            }
         } else {
             None
         };
