@@ -76,12 +76,6 @@ impl CollectionDatasource for PgDatasource {
             warn!("Datasource `{id}`: `fid_field` missing - single item queries will be ignored");
         }
         let mut queryable_field_map = srccfg.queryable_field_mappings.clone();
-        if let Some(ref t) = temporal_column {
-            queryable_field_map.insert(t.clone(), t.clone());
-        }
-        if let Some(ref t) = temporal_end_column {
-            queryable_field_map.insert(t.clone(), t.clone());
-        }
         let queryables_types = get_column_info(self, &sql, &queryable_field_map).await?;
         let mut other_columns = HashMap::new();
         for (k, (v, t)) in &queryables_types {
@@ -105,13 +99,23 @@ impl CollectionDatasource for PgDatasource {
         } else {
             HashMap::new()
         };
+        let temporal_column = if let Some(tc) = temporal_column {
+            queryable_field_map.remove(&tc)
+        } else {
+            None
+        };
+        let temporal_end_column = if let Some(tc) = temporal_end_column {
+            queryable_field_map.remove(&tc)
+        } else {
+            None
+        };
 
         let source = PgCollectionSource {
             ds: self.clone(),
             sql,
             geometry_column,
             pk_column,
-            temporal_column: temporal_column.clone(),
+            temporal_column,
             temporal_end_column,
             ordering_column: srccfg.ordering_field.to_owned(),
             other_columns,
