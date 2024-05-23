@@ -526,6 +526,7 @@ impl CollectionSource for PgCollectionSource {
     }
 }
 
+#[allow(unused_variables)]
 fn row_to_feature(row: &PgRow, colsrc: &PgCollectionSource) -> Result<CoreFeature> {
     let properties: serde_json::Value = row.try_get("properties")?;
     // properties[col.name()] = match col.type_info().name() {
@@ -553,7 +554,6 @@ fn row_to_feature(row: &PgRow, colsrc: &PgCollectionSource) -> Result<CoreFeatur
     };
 
     // ERROR:  lwgeom_to_geojson: 'CurvePolygon' geometry type not supported
-    let id: Option<String> = row.try_get("pk")?;
     #[cfg(feature = "stac")]
     let assets: HashMap<String, STACAsset> = colsrc
         .stac_asset_mappings
@@ -575,52 +575,14 @@ fn row_to_feature(row: &PgRow, colsrc: &PgCollectionSource) -> Result<CoreFeatur
         })
         .collect();
 
-    let url = PUBLIC_SERVER_URL.get().unwrap();
-    let collection_id = &colsrc.collection;
-    let links = vec![
-        ApiLink {
-            href: format!("{url}"),
-            rel: Some("root".to_string()),
-            type_: Some("application/geo+json".to_string()),
-            title: Some("The landing page of this server as JSON".to_string()),
-            hreflang: None,
-            length: None,
-        },
-        ApiLink {
-            href: format!(
-                "{url}/collections/{collection_id}/items/{}",
-                id.clone().unwrap_or_default()
-            ),
-            rel: Some("self".to_string()),
-            type_: Some("application/geo+json".to_string()),
-            title: Some("this document".to_string()),
-            hreflang: None,
-            length: None,
-        },
-        ApiLink {
-            href: format!("{url}/collections/{collection_id}"),
-            rel: Some("collection".to_string()),
-            type_: Some("application/geo+json".to_string()),
-            title: Some("the collection document".to_string()),
-            hreflang: None,
-            length: None,
-        },
-        ApiLink {
-            href: format!("{url}/collections/{collection_id}"),
-            rel: Some("parent".to_string()),
-            type_: Some("application/geo+json".to_string()),
-            title: Some("the collection document".to_string()),
-            hreflang: None,
-            length: None,
-        },
-    ];
-
-    let item = CoreFeature {
+    let id: Option<String> = row.try_get("pk")?;
+    #[allow(unused_mut)]
+    let mut item = CoreFeature {
         type_: "Feature".to_string(),
-        id,
+        id: id.clone(),
         geometry,
         properties: Some(properties),
-        links,
+        links: vec![],
         #[cfg(feature = "stac")]
         stac_version: "1.0.0".to_string(),
         #[cfg(feature = "stac")]
@@ -630,6 +592,49 @@ fn row_to_feature(row: &PgRow, colsrc: &PgCollectionSource) -> Result<CoreFeatur
         #[cfg(feature = "stac")]
         bbox,
     };
+
+    #[cfg(feature = "stac")]
+    {
+        let url = PUBLIC_SERVER_URL.get().unwrap();
+        let collection_id = &colsrc.collection;
+        item.links = vec![
+            ApiLink {
+                href: format!("{url}"),
+                rel: Some("root".to_string()),
+                type_: Some("application/geo+json".to_string()),
+                title: Some("The landing page of this server as JSON".to_string()),
+                hreflang: None,
+                length: None,
+            },
+            ApiLink {
+                href: format!(
+                    "{url}/collections/{collection_id}/items/{}",
+                    id.clone().unwrap_or_default()
+                ),
+                rel: Some("self".to_string()),
+                type_: Some("application/geo+json".to_string()),
+                title: Some("this document".to_string()),
+                hreflang: None,
+                length: None,
+            },
+            ApiLink {
+                href: format!("{url}/collections/{collection_id}"),
+                rel: Some("collection".to_string()),
+                type_: Some("application/geo+json".to_string()),
+                title: Some("the collection document".to_string()),
+                hreflang: None,
+                length: None,
+            },
+            ApiLink {
+                href: format!("{url}/collections/{collection_id}"),
+                rel: Some("parent".to_string()),
+                type_: Some("application/geo+json".to_string()),
+                title: Some("the collection document".to_string()),
+                hreflang: None,
+                length: None,
+            },
+        ];
+    }
 
     Ok(item)
 }
