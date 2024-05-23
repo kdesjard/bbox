@@ -43,6 +43,7 @@ impl CollectionDatasource for PgDatasource {
         } else if srccfg.table_name.is_some() && srccfg.sql.is_some() {
             warn!("Datasource`{id}`: configuration `table_name` ignored, using `sql` instead");
         }
+        let mut queryable_field_map = srccfg.queryable_field_mappings.clone();
         let (pk_column, geometry_column, sql) = if let Some(table_name) = &srccfg.table_name {
             let public = "public".to_string();
             let table_schema = srccfg.table_schema.as_ref().unwrap_or(&public);
@@ -60,20 +61,24 @@ impl CollectionDatasource for PgDatasource {
         } else {
             let pk_column = srccfg.fid_field.clone();
             // TODO: We should also allow user queries without geometry
-            let geometry_column =
+            let geometry_field =
                 srccfg
                     .geometry_field
                     .clone()
                     .ok_or(Error::DatasourceSetupError(format!(
                         "Datasource `{id}`: configuration `geometry_field` missing"
                     )))?;
+            let geometry_column = if queryable_field_map.contains_key(&geometry_field) {
+                queryable_field_map.remove(&geometry_field).unwrap()
+            } else {
+                geometry_field
+            };
             let sql = check_query(self, srccfg.sql.clone().expect("config checked")).await?;
             (pk_column, geometry_column, sql)
         };
         if pk_column.is_none() {
             warn!("Datasource `{id}`: `fid_field` missing - single item queries will be ignored");
         }
-        let mut queryable_field_map = srccfg.queryable_field_mappings.clone();
         let queryables_types = get_column_info(self, &sql, &queryable_field_map).await?;
         let mut other_columns = HashMap::new();
         for (k, (v, t)) in &queryables_types {
@@ -120,6 +125,12 @@ impl CollectionDatasource for PgDatasource {
         let source = PgCollectionSource {
             ds: self.clone(),
             sql,
+            geometry_field: srccfg
+                .geometry_field
+                .to_owned()
+                .ok_or(Error::DatasourceSetupError(format!(
+                    "Datasource `{id}`: configuration `geometry_field` missing"
+                )))?,
             geometry_column,
             pk_column,
             temporal_column,
@@ -257,6 +268,7 @@ impl AutoscanCollectionDatasource for PgDatasource {
 pub struct PgCollectionSource {
     ds: PgDatasource,
     sql: String,
+    geometry_field: String,
     geometry_column: String,
     /// Primary key column, None if multi column key.
     pk_column: Option<String>,
@@ -429,16 +441,17 @@ impl CollectionSource for PgCollectionSource {
         builder.push(") ");
         let inner_sql = builder.sql();
         debug!("Inner SQL: {inner_sql}");
+        let geometry_field = &self.geometry_field;
         let select_sql = if let Some(pk) = &self.pk_column {
             format!(
-                r#"SELECT to_jsonb(t.*)-'{geometry_column}'-'{pk}' AS properties, ST_AsGeoJSON({geometry_column})::jsonb AS geometry, st_envelope({geometry_column}::geometry) as bbox,
+                r#"SELECT to_jsonb(t.*)-'{geometry_field}'-'{pk}' AS properties, ST_AsGeoJSON({geometry_field})::jsonb AS geometry, st_envelope({geometry_field}::geometry) as bbox,
                     "{pk}"::varchar AS pk,
                       count(*) OVER () AS __total_cnt
                    FROM query t"#,
             )
         } else {
             format!(
-                r#"SELECT to_jsonb(t.*)-'{geometry_column}' AS properties, ST_AsGeoJSON({geometry_column})::jsonb AS geometry, st_envelope({geometry_column}::geometry) as bbox,
+                r#"SELECT to_jsonb(t.*)-'{geometry_field}' AS properties, ST_AsGeoJSON({geometry_field})::jsonb AS geometry, st_envelope({geometry_field}::geometry) as bbox,
                       NULL AS pk,
                       --row_number() OVER () ::varchar AS pk,
                       count(*) OVER () AS __total_cnt
