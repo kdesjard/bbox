@@ -57,7 +57,7 @@ impl OgcApiService for FeatureService {
             #[cfg(feature = "stac")]
             ApiLink {
                 href: format!("{url}/catalog"),
-                rel: Some("catalog".to_string()),
+                rel: Some("child".to_string()),
                 type_: Some("application/json".to_string()),
                 title: Some("Information about the catalog".to_string()),
                 hreflang: None,
