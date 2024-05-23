@@ -2,7 +2,6 @@ use bbox_core::config::{from_config_root_or_exit, ConfigError, DsPostgisCfg, Nam
 use bbox_core::service::ServiceConfig;
 use clap::ArgMatches;
 use serde::Deserialize;
-#[cfg(feature = "stac")]
 use std::collections::HashMap;
 
 #[derive(Deserialize, Default, Debug)]
