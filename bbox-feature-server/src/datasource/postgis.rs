@@ -509,7 +509,7 @@ impl CollectionSource for PgCollectionSource {
                FROM query t
                WHERE {pk}::varchar = '{feature_id}'"#,
             sql = &self.sql,
-            geometry_column = &self.geometry_column,
+            geometry_column = &self.geometry_field,
         );
         debug!("{sql}");
         if let Some(row) = sqlx::query(&sql)
