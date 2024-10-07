@@ -5,6 +5,7 @@ pub struct OgcApiInventory {
     pub landing_page_links: Vec<ApiLink>,
     pub conformance_classes: Vec<String>,
     pub collections: Vec<CoreCollection>,
+    pub extents: CoreExtent,
 }
 
 /// OpenAPi doc collection

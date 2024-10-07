@@ -84,10 +84,26 @@ pub fn absurl(req: &HttpRequest, path: &str) -> String {
 /// landing page
 async fn index(ogcapi: web::Data<OgcApiInventory>, _req: HttpRequest) -> HttpResponse {
     // Make links absolute. Some clients (like OGC conformance tester) expect it.
+    let conforms_to = CoreConformsTo {
+        conforms_to: vec![
+            "https://api.stacspec.org/v1.0.0/core".to_string(),
+            "https://api.stacspec.org/v1.0.0/ogcapi-features".to_string(),
+            "http://www.opengis.net/spec/ogcapi-features-1/1.0/conf/core".to_string(),
+            "http://www.opengis.net/spec/ogcapi-features-1/1.0/conf/geojson".to_string(),
+            //        "https://api.stacspec.org/v1.0.0/item-search".to_string(),
+            //        "https://api.stacspec.org/v1.0.0/item-search#query".to_string(),
+        ],
+    };
     let landing_page = CoreLandingPage {
+        r#type: Some("Catalog".to_string()),
+        stac_version: Some("1.0.0".to_string()),
+        id: Some("STAC Catalog".to_string()),
         title: Some("BBOX OGC API".to_string()),
         description: Some("BBOX OGC API landing page".to_string()),
         links: ogcapi.landing_page_links.clone(),
+        #[cfg(feature = "stac")]
+        conforms_to: conforms_to,
+        extent: Some(ogcapi.extents.clone()),
     };
     HttpResponse::Ok().json(landing_page)
 }

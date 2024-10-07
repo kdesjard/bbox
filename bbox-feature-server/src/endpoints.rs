@@ -1,7 +1,7 @@
 use crate::filter_params::FilterParams;
 use crate::inventory::Inventory;
 use crate::service::FeatureService;
-use actix_web::{web, Error, HttpRequest, HttpResponse};
+use actix_web::{web, web::Query, Error, HttpRequest, HttpResponse};
 use bbox_core::api::OgcApiInventory;
 use bbox_core::config::PUBLIC_SERVER_URL;
 #[cfg(feature = "stac")]
@@ -29,6 +29,7 @@ async fn collections(
                 title: Some("landing page".to_string()),
                 hreflang: None,
                 length: None,
+                method: None,
             },
             ApiLink {
                 href: format!("{url}/collections"),
@@ -37,6 +38,7 @@ async fn collections(
                 title: Some("this document".to_string()),
                 hreflang: None,
                 length: None,
+                method: None,
             },
         ],
 
@@ -105,8 +107,24 @@ async fn queryables(
 async fn features(
     inventory: web::Data<Inventory>,
     req: HttpRequest,
-    collection_id: web::Path<String>,
+    collection_id: Option<web::Path<String>>,
 ) -> Result<HttpResponse, Error> {
+    let collection_id = match req.path().split("/").last() {
+        Some(seg) => {
+            if seg == "search" {
+                let query = req.query_string();
+                let kvs = Query::<HashMap<String, String>>::from_query(query).unwrap();
+                kvs.get("collection").cloned()
+            } else {
+                collection_id.as_deref().cloned()
+            }
+        }
+        None => collection_id.as_deref().cloned(),
+    };
+    let Some(collection_id) = collection_id else {
+        return Ok(HttpResponse::BadRequest().finish());
+    };
+
     if let Some(collection) = inventory.core_collection(&collection_id) {
         let mut filters: HashMap<String, String> =
             match serde_urlencoded::from_str::<Vec<(String, String)>>(req.query_string()) {
@@ -119,6 +137,7 @@ async fn features(
 
         let bbox = filters.remove("bbox");
         let datetime = filters.remove("datetime");
+        let collection = filters.remove("collection");
 
         let offset = if let Some(offset_str) = filters.get("offset") {
             match offset_str.parse::<u64>() {
@@ -234,6 +253,9 @@ impl ServiceEndpoints for FeatureService {
                     .route(web::get().to(features)),
             )
             .service(
+                web::resource("/collections/{collectionId}/search").route(web::get().to(features)),
+            )
+            .service(
                 web::resource("/collections/{collectionId}/items/{featureId}.json")
                     .route(web::get().to(feature)),
             )
@@ -267,6 +289,7 @@ async fn catalog(
                     title: None,
                     hreflang: None,
                     length: None,
+                    method: None,
                 })
             } else {
                 None
@@ -289,6 +312,7 @@ async fn catalog(
                 title: Some("this document".to_string()),
                 hreflang: None,
                 length: None,
+                method: None,
             },
             ApiLink {
                 href: format!("{url}/collections"),
@@ -297,6 +321,7 @@ async fn catalog(
                 title: Some("collections".to_string()),
                 hreflang: None,
                 length: None,
+                method: None,
             },
             ApiLink {
                 href: format!("{url}/catalog.json"),
@@ -305,6 +330,7 @@ async fn catalog(
                 title: Some("this document".to_string()),
                 hreflang: None,
                 length: None,
+                method: None,
             },
         ],
     };

@@ -4,7 +4,7 @@ use crate::cli::{CliArgs, CommonCommands, GlobalArgs, NoArgs, NoCommands};
 use crate::config::{ConfigError, CoreServiceCfg, WebserverCfg};
 use crate::logger;
 use crate::metrics::{init_metrics_exporter, no_metrics, NoMetrics};
-use crate::ogcapi::{ApiLink, CoreCollection};
+use crate::ogcapi::{ApiLink, CoreCollection, CoreExtent, CoreExtentSpatial, CoreExtentTemporal};
 use crate::tls::load_rustls_config;
 use actix_cors::Cors;
 use actix_session::{config::PersistentSession, storage::CookieSessionStore, SessionMiddleware};
@@ -47,6 +47,9 @@ pub trait OgcApiService: Clone + Send {
         Vec::new()
     }
     fn openapi_yaml(&self) -> Option<&str> {
+        None
+    }
+    fn extents(&self) -> Option<CoreExtent> {
         None
     }
     /// Service metrics
@@ -199,6 +202,7 @@ impl OgcApiService for CoreService {
                 title: Some("this document".to_string()),
                 hreflang: None,
                 length: None,
+                method: None,
             },
             ApiLink {
                 href: "/openapi.json".to_string(),
@@ -207,6 +211,7 @@ impl OgcApiService for CoreService {
                 title: Some("the API definition".to_string()),
                 hreflang: None,
                 length: None,
+                method: None,
             },
             ApiLink {
                 href: "/openapi.yaml".to_string(),
@@ -215,6 +220,7 @@ impl OgcApiService for CoreService {
                 title: Some("the API definition".to_string()),
                 hreflang: None,
                 length: None,
+                method: None,
             },
             ApiLink {
                 href: "/conformance".to_string(),
@@ -223,6 +229,7 @@ impl OgcApiService for CoreService {
                 title: Some("OGC API conformance classes implemented by this server".to_string()),
                 hreflang: None,
                 length: None,
+                method: None,
             },
         ]
     }
@@ -239,6 +246,18 @@ impl OgcApiService for CoreService {
         static METRICS: OnceCell<RequestMetrics> = OnceCell::new();
         METRICS.get_or_init(|| {
             RequestMetricsBuilder::new().build(opentelemetry::global::meter("bbox"))
+        })
+    }
+    fn extents(&self) -> Option<CoreExtent> {
+        Some(CoreExtent {
+            spatial: Some(CoreExtentSpatial {
+                bbox: vec![vec![-180.0, -90.0, 180.0, 90.0]],
+                crs: None,
+            }),
+            temporal: Some(CoreExtentTemporal {
+                interval: vec![vec![Some("null".to_string()), Some("null".to_string())]],
+                trs: None,
+            }),
         })
     }
 }

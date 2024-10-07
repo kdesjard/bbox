@@ -154,6 +154,7 @@ impl Inventory {
                     title: Some("The landing page of this server".to_string()),
                     hreflang: None,
                     length: None,
+                    method: None,
                 },
                 ApiLink {
                     href: format!("{url}/collections/{collection_id}/items"),
@@ -162,15 +163,16 @@ impl Inventory {
                     title: Some("this document".to_string()),
                     hreflang: None,
                     length: None,
+                    method: None,
                 },
                 ApiLink {
                     href: format!("{url}/collections/{collection_id}"),
                     rel: Some("collection".to_string()),
                     type_: Some("application/geo+json".to_string()),
                     title: Some("the collection document".to_string()),
-
                     hreflang: None,
                     length: None,
+                    method: None,
                 },
             ],
             time_stamp: None, // time when the response was generated
@@ -187,6 +189,7 @@ impl Inventory {
                 title: Some(rel.to_string()),
                 hreflang: None,
                 length: None,
+                method: None,
             });
         };
         if items.number_matched > Some(items.number_returned) {

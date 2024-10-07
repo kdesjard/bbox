@@ -186,6 +186,16 @@ impl CollectionDatasource for PgDatasource {
                     title: Some("The landing page of this server as JSON".to_string()),
                     hreflang: None,
                     length: None,
+                    method: None,
+                },
+                ApiLink {
+                    href: format!("{url}/collections"),
+                    rel: Some("parent".to_string()),
+                    type_: Some("application/geo+json".to_string()),
+                    title: Some("This document as JSON".to_string()),
+                    hreflang: None,
+                    length: None,
+                    method: None,
                 },
                 ApiLink {
                     href: format!("{url}/collections/{id}"),
@@ -194,6 +204,7 @@ impl CollectionDatasource for PgDatasource {
                     title: Some("This document as JSON".to_string()),
                     hreflang: None,
                     length: None,
+                    method: None,
                 },
                 ApiLink {
                     href: format!("{url}/collections/{id}/items"),
@@ -202,6 +213,7 @@ impl CollectionDatasource for PgDatasource {
                     title: Some(id.clone()),
                     hreflang: None,
                     length: None,
+                    method: None,
                 },
             ],
             #[cfg(feature = "stac")]
@@ -220,6 +232,7 @@ impl CollectionDatasource for PgDatasource {
                 title: Some(id.clone()),
                 hreflang: None,
                 length: None,
+                method: None,
             })
         }
 
@@ -629,6 +642,7 @@ fn row_to_feature(row: &PgRow, colsrc: &PgCollectionSource) -> Result<CoreFeatur
                 title: Some("The landing page of this server as JSON".to_string()),
                 hreflang: None,
                 length: None,
+                method: None,
             },
             ApiLink {
                 href: format!(
@@ -640,6 +654,7 @@ fn row_to_feature(row: &PgRow, colsrc: &PgCollectionSource) -> Result<CoreFeatur
                 title: Some("this document".to_string()),
                 hreflang: None,
                 length: None,
+                method: None,
             },
             ApiLink {
                 href: format!("{url}/collections/{collection_id}"),
@@ -648,6 +663,7 @@ fn row_to_feature(row: &PgRow, colsrc: &PgCollectionSource) -> Result<CoreFeatur
                 title: Some("the collection document".to_string()),
                 hreflang: None,
                 length: None,
+                method: None,
             },
             ApiLink {
                 href: format!("{url}/collections/{collection_id}"),
@@ -656,6 +672,7 @@ fn row_to_feature(row: &PgRow, colsrc: &PgCollectionSource) -> Result<CoreFeatur
                 title: Some("the collection document".to_string()),
                 hreflang: None,
                 length: None,
+                method: None,
             },
         ];
     }

@@ -6,11 +6,24 @@ use std::collections::HashMap;
 #[derive(Debug, Serialize)]
 /// <http://docs.opengeospatial.org/is/17-069r3/17-069r3.html#_api_landing_page>
 pub struct CoreLandingPage {
+    #[cfg(feature = "stac")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub r#type: Option<String>,
+    #[cfg(feature = "stac")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    #[cfg(feature = "stac")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stac_version: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     pub links: Vec<ApiLink>,
+    #[cfg(feature = "stac")]
+    #[serde(flatten)]
+    pub conforms_to: CoreConformsTo,
+    pub extent: Option<CoreExtent>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -27,6 +40,9 @@ pub struct ApiLink {
     pub title: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub length: Option<u64>,
+    #[cfg(feature = "stac")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub method: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -72,7 +88,7 @@ pub struct CoreCollection {
     pub license: String,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Default, Serialize)]
 pub struct CoreExtent {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub spatial: Option<CoreExtentSpatial>,

@@ -109,6 +109,7 @@ impl CollectionDatasource for SqliteDatasource {
                 title: cfg.title.clone(),
                 hreflang: None,
                 length: None,
+                method: None,
             }],
             #[cfg(feature = "stac")]
             stac_version: "1.0.0".to_string(),
@@ -246,6 +247,7 @@ impl CollectionSource for GpkgCollectionSource {
                     title: Some("this document".to_string()),
                     hreflang: None,
                     length: None,
+                    method: None,
                 },
                 ApiLink {
                     href: format!("/collections/{collection_id}"),
@@ -254,6 +256,7 @@ impl CollectionSource for GpkgCollectionSource {
                     title: Some("the collection document".to_string()),
                     hreflang: None,
                     length: None,
+                    method: None,
                 },
             ];
             Ok(Some(item))
