@@ -1,3 +1,4 @@
+use geozero::{geojson::GeoJson, ToGeo};
 use serde::Deserialize;
 use std::collections::HashMap;
 
@@ -10,6 +11,7 @@ pub struct FilterParams {
     pub bbox: Option<String>,
     pub datetime: Option<String>,
     pub filters: HashMap<String, String>,
+    pub intersects: Option<String>,
     pub collections: Option<Vec<String>>,
     pub ids: Option<Vec<String>>,
 }
@@ -105,6 +107,16 @@ impl FilterParams {
     }
     pub fn ids(&self) -> Result<Option<Vec<String>>, Box<dyn std::error::Error>> {
         Ok(self.ids.clone())
+    }
+
+    pub fn intersects(&self) -> Result<Option<String>, Box<dyn std::error::Error>> {
+        if let Some(jsonstr) = &self.intersects {
+            let geojson = GeoJson(jsonstr);
+            // validate we have good GeoJSON
+            let _ = geojson.to_geo()?;
+            return Ok(Some(jsonstr.to_string()));
+        }
+        Ok(None)
     }
 }
 
