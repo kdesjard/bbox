@@ -124,7 +124,7 @@ impl TryFrom<Vec<Vec<String>>> for CoreExtentTemporal {
                         } else {
                             match DateTime::parse_from_rfc3339(i) {
                                 Ok(_dt) => Ok(Some(i.to_string())),
-                                Err(_) => Err("no good".into()),
+                                Err(_) => Err("invalid datetime format"),
                             }
                         }
                     })
