@@ -10,6 +10,8 @@ pub struct FilterParams {
     pub bbox: Option<String>,
     pub datetime: Option<String>,
     pub filters: HashMap<String, String>,
+    pub collections: Option<Vec<String>>,
+    pub ids: Option<Vec<String>>,
 }
 
 #[derive(Debug)]
@@ -39,7 +41,7 @@ impl FilterParams {
     pub fn next(&self, max: u64) -> Option<FilterParams> {
         let offset = self.offset.unwrap_or(0);
         let next = offset.saturating_add(self.limit_or_default());
-        if (next as u64) < max {
+        if (next) < max {
             Some(self.with_offset(next))
         } else {
             None
@@ -100,6 +102,9 @@ impl FilterParams {
     }
     pub fn other_params(&self) -> Result<&HashMap<String, String>, Box<dyn std::error::Error>> {
         Ok(&self.filters)
+    }
+    pub fn ids(&self) -> Result<Option<Vec<String>>, Box<dyn std::error::Error>> {
+        Ok(self.ids.clone())
     }
 }
 
@@ -179,7 +184,7 @@ mod tests {
             offset: Some(10),
             bbox: None,
             datetime: None,
-            filters: HashMap::new(),
+            filters: MultiMap::new(),
         };
         assert_eq!(filter.prev().unwrap().offset, Some(0));
         assert_eq!(filter.next(35).unwrap().offset, Some(20));
