@@ -12,8 +12,8 @@ pub struct FilterParams {
     pub datetime: Option<String>,
     pub filters: HashMap<String, String>,
     pub intersects: Option<String>,
-    pub collections: Option<Vec<String>>,
-    pub ids: Option<Vec<String>>,
+    pub collections: Option<String>,
+    pub ids: Option<String>,
 }
 
 #[derive(Debug)]
@@ -71,7 +71,7 @@ impl FilterParams {
         }
         args
     }
-    pub fn bbox(&self) -> Result<Option<Vec<f64>>, std::num::ParseFloatError> {
+    pub fn bbox(&self) -> Result<Option<Vec<f64>>, Box<dyn std::error::Error>> {
         if let Some(bboxstr) = &self.bbox {
             let bbox: Vec<f64> = bboxstr
                 .split(',')
@@ -79,8 +79,9 @@ impl FilterParams {
                 .collect::<Result<Vec<_>, _>>()?;
             if bbox.len() == 4 || bbox.len() == 6 {
                 return Ok(Some(bbox));
+            } else {
+                return Err("Invalid length".into());
             }
-            // TODO: else return Err
         }
         Ok(None)
     }
@@ -88,16 +89,24 @@ impl FilterParams {
         if let Some(dt) = &self.datetime {
             let parts: Vec<&str> = dt.split('/').collect();
             let mut parsed_parts = vec![];
+            if parts.len() > 2 {
+                return Err("Invalid datetimes".into());
+            }
+            let mut dts = vec![];
             for part in &parts {
                 match *part {
-                    ".." => parsed_parts.push(TemporalType::Open),
+                    ".." | "" => parsed_parts.push(TemporalType::Open),
                     p => {
-                        parsed_parts.push(TemporalType::DateTime(
-                            chrono::DateTime::parse_from_rfc3339(p)?,
-                        ));
+                        let dt = chrono::DateTime::parse_from_rfc3339(p)?;
+                        parsed_parts.push(TemporalType::DateTime(dt));
+                        dts.push(dt);
                     }
                 }
             }
+            if dts.len() == 2 && dts[0] > dts[1] {
+                return Err("Invalid datetimes".into());
+            }
+            println!("{parsed_parts:#?}");
             return Ok(Some(parsed_parts));
         }
         Ok(None)
@@ -106,7 +115,11 @@ impl FilterParams {
         Ok(&self.filters)
     }
     pub fn ids(&self) -> Result<Option<Vec<String>>, Box<dyn std::error::Error>> {
-        Ok(self.ids.clone())
+        if let Some(ids) = &self.ids {
+            let ids_vec: Vec<String> = ids.split(',').map(str::to_string).collect();
+            return Ok(Some(ids_vec));
+        };
+        Ok(None)
     }
 
     pub fn intersects(&self) -> Result<Option<String>, Box<dyn std::error::Error>> {
