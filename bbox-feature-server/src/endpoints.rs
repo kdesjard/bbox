@@ -6,7 +6,7 @@ use bbox_core::api::OgcApiInventory;
 use bbox_core::config::PUBLIC_SERVER_URL;
 #[cfg(feature = "stac")]
 use bbox_core::ogcapi::STACCatalog;
-use bbox_core::ogcapi::{ApiLink, CoreCollections, CoreFeatures};
+use bbox_core::ogcapi::{ApiLink, CoreCollections, CoreFeature, CoreFeatures};
 use bbox_core::service::ServiceEndpoints;
 use bbox_core::templates::{create_env_embedded, html_accepted, render_endpoint};
 use minijinja::{context, Environment};
@@ -105,17 +105,23 @@ async fn queryables(
 }
 /// fetch all features
 async fn search(inventory: web::Data<Inventory>, req: HttpRequest) -> Result<HttpResponse, Error> {
-    let fp = parse_query_params(&req)?;
+    let fp = match parse_query_params(&req) {
+        Ok(filters) => filters,
+        Err(e) => {
+            log::error!("{e}");
+            return Ok(HttpResponse::BadRequest().finish());
+        }
+    };
+
     let inventory_collections: Vec<String> = inventory
         .collections()
         .iter()
         .map(|c| c.id.clone())
         .collect();
     let collections = match fp.collections {
-        Some(ref colls) => colls,
+        Some(ref colls) => &colls.split(',').map(str::to_string).collect(),
         None => &inventory_collections,
     };
-    use bbox_core::ogcapi::CoreFeature;
     let mut features: Vec<CoreFeature> = vec![];
     for collection in collections {
         if let Ok(Some(collection_features)) = inventory.collection_items(collection, &fp).await {
@@ -151,31 +157,11 @@ fn parse_query_params(req: &HttpRequest) -> Result<FilterParams, Box<dyn StdErro
             }
         })
         .collect();
-    let collections: Vec<String> = pairs
-        .iter()
-        .filter_map(|(k, v)| {
-            if k == "collections" {
-                Some(v.to_owned())
-            } else {
-                None
-            }
-        })
-        .collect();
-    let ids: Vec<String> = pairs
-        .iter()
-        .filter_map(|(k, v)| if k == "ids" { Some(v.to_owned()) } else { None })
-        .collect();
-    let collections = if collections.is_empty() {
-        None
-    } else {
-        Some(collections)
-    };
-    let ids = if ids.is_empty() { None } else { Some(ids) };
 
     let bbox = filters.remove("bbox");
     let datetime = filters.remove("datetime");
-    let _ = filters.remove("collections");
-    let _ = filters.remove("ids");
+    let collections = filters.remove("collections");
+    let ids = filters.remove("ids");
     let intersects = filters.remove("intersects");
     if bbox.is_some() && intersects.is_some() {
         return Err("bbox and intersects are mutually exclusive options".into());
