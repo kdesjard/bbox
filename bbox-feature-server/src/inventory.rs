@@ -131,16 +131,16 @@ impl Inventory {
         &self,
         collection_id: &str,
         filter: &FilterParams,
-    ) -> Option<CoreFeatures> {
+    ) -> Result<Option<CoreFeatures>, Box<dyn std::error::Error>> {
         let Some(fc) = self.collection(collection_id) else {
             warn!("Ignoring error getting collection {collection_id}");
-            return None;
+            return Err("Invalid collection".into());
         };
         let items = match fc.source.items(filter).await {
             Ok(items) => items,
             Err(e) => {
                 warn!("Ignoring error getting collection items for {collection_id}: {e}");
-                return None;
+                return Err(Box::new(e));
             }
         };
         let url = PUBLIC_SERVER_URL.get().unwrap();
@@ -196,7 +196,7 @@ impl Inventory {
             if let Some(prev) = filter.prev() {
                 add_link(prev, "prev");
             }
-            if let Some(next) = filter.next(items.number_matched?) {
+            if let Some(next) = filter.next(items.number_matched.unwrap()) {
                 add_link(next, "next");
             }
         } else {
@@ -211,7 +211,7 @@ impl Inventory {
                 add_link(next, "next");
             }
         }
-        Some(features)
+        Ok(Some(features))
     }
 
     pub async fn collection_item(
