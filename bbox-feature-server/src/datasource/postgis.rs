@@ -359,6 +359,21 @@ impl CollectionSource for PgCollectionSource {
                 return Err(Error::QueryParams);
             }
         }
+        match filter.intersects() {
+            Ok(Some(intersects)) => {
+                if where_term {
+                    builder.push(" AND ");
+                } else {
+                    builder.push(" WHERE ");
+                }
+                builder.push(format!(" ( {geometry_column} && ST_GeomFromGeoJSON("));
+                builder.push_bind(intersects);
+                builder.push(") ) ");
+                where_term = true;
+            }
+            Ok(None) => {}
+            Err(_) => {}
+        }
         if let Some(temporal_column) = temporal_column {
             let temporal_end_column = self.temporal_end_column.as_ref().unwrap_or(temporal_column);
             match filter.temporal() {
