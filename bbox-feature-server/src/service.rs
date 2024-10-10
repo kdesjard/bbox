@@ -49,6 +49,13 @@ impl OgcApiService for FeatureService {
                 "http://www.opengis.net/spec/ogcapi-features-1/1.0/conf/html".to_string(),
             ]);
         }
+        if cfg!(feature = "stac") {
+            classes.extend(vec![
+                "https://api.stacspec.org/v1.0.0/core".to_string(),
+                "https://api.stacspec.org/v1.0.0/ogcapi-features".to_string(),
+                "https://api.stacspec.org/v1.0.0/item-search".to_string(),
+            ]);
+        }
         classes
     }
     fn landing_page_links(&self, _api_base: &str) -> Vec<ApiLink> {
@@ -56,7 +63,7 @@ impl OgcApiService for FeatureService {
         vec![
             #[cfg(feature = "stac")]
             ApiLink {
-                href: format!("{url}"),
+                href: url.to_string(),
                 rel: Some("self".to_string()),
                 type_: Some("application/json".to_string()),
                 title: None,
@@ -66,7 +73,7 @@ impl OgcApiService for FeatureService {
             },
             #[cfg(feature = "stac")]
             ApiLink {
-                href: format!("{url}"),
+                href: url.to_string(),
                 rel: Some("root".to_string()),
                 type_: Some("application/json".to_string()),
                 title: None,
@@ -112,7 +119,6 @@ impl OgcApiService for FeatureService {
                 length: None,
                 method: None,
             },
-            /*
             #[cfg(feature = "stac")]
             ApiLink {
                 href: format!("{url}/search"),
@@ -123,17 +129,6 @@ impl OgcApiService for FeatureService {
                 length: None,
                 method: Some("GET".to_string()),
             },
-            #[cfg(feature = "stac")]
-            ApiLink {
-                href: format!("{url}/search"),
-                rel: Some("search".to_string()),
-                type_: Some("application/geo+json".to_string()),
-                title: Some("search".to_string()),
-                hreflang: None,
-                length: None,
-                method: Some("POST".to_string()),
-            },
-            */
         ]
     }
     fn collections(&self) -> Vec<CoreCollection> {
