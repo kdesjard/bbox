@@ -1,17 +1,18 @@
 use crate::filter_params::FilterParams;
 use crate::inventory::Inventory;
 use crate::service::FeatureService;
-use actix_web::{web, web::Query, Error, HttpRequest, HttpResponse};
+use actix_web::{web, Error, HttpRequest, HttpResponse};
 use bbox_core::api::OgcApiInventory;
 use bbox_core::config::PUBLIC_SERVER_URL;
 #[cfg(feature = "stac")]
 use bbox_core::ogcapi::STACCatalog;
-use bbox_core::ogcapi::{ApiLink, CoreCollections};
+use bbox_core::ogcapi::{ApiLink, CoreCollections, CoreFeatures};
 use bbox_core::service::ServiceEndpoints;
 use bbox_core::templates::{create_env_embedded, html_accepted, render_endpoint};
 use minijinja::{context, Environment};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
+use std::error::Error as StdError;
 
 /// the feature collections in the dataset
 async fn collections(
@@ -23,7 +24,7 @@ async fn collections(
     let collections = CoreCollections {
         links: vec![
             ApiLink {
-                href: format!("{url}"),
+                href: url.to_string(),
                 rel: Some("root".to_string()),
                 type_: Some("application/json".to_string()),
                 title: Some("landing page".to_string()),
@@ -102,74 +103,120 @@ async fn queryables(
         Ok(HttpResponse::NotFound().finish())
     }
 }
+/// fetch all features
+async fn search(inventory: web::Data<Inventory>, req: HttpRequest) -> Result<HttpResponse, Error> {
+    let fp = parse_query_params(&req)?;
+    let inventory_collections: Vec<String> = inventory
+        .collections()
+        .iter()
+        .map(|c| c.id.clone())
+        .collect();
+    let collections = match fp.collections {
+        Some(ref colls) => colls,
+        None => &inventory_collections,
+    };
+    use bbox_core::ogcapi::CoreFeature;
+    let mut features: Vec<CoreFeature> = vec![];
+    for collection in collections {
+        if let Some(collection_features) = inventory.collection_items(collection, &fp).await {
+            features.extend(collection_features.features);
+        }
+    }
+    let feature = CoreFeatures {
+        type_: "FeatureCollection".to_string(),
+        links: vec![],
+        number_matched: Some(features.len() as u64),
+        number_returned: Some(features.len() as u64),
+        time_stamp: None,
+        features,
+    };
+    Ok(HttpResponse::Ok()
+        .content_type("application/geo+json")
+        .json(feature))
+}
+
+fn parse_query_params(req: &HttpRequest) -> Result<FilterParams, Box<dyn StdError>> {
+    let Ok(pairs) = serde_urlencoded::from_str::<Vec<(String, String)>>(req.query_string()) else {
+        return Err("Bad".into());
+    };
+    let mut filters: HashMap<String, String> = pairs
+        .iter()
+        .filter_map(|(k, v)| {
+            if k != "collections" || k != "ids" {
+                Some((k.to_owned(), v.to_owned()))
+            } else {
+                None
+            }
+        })
+        .collect();
+    let collections: Vec<String> = pairs
+        .iter()
+        .filter_map(|(k, v)| {
+            if k == "collections" {
+                Some(v.to_owned())
+            } else {
+                None
+            }
+        })
+        .collect();
+    let ids: Vec<String> = pairs
+        .iter()
+        .filter_map(|(k, v)| if k == "ids" { Some(v.to_owned()) } else { None })
+        .collect();
+    let collections = if collections.is_empty() {
+        None
+    } else {
+        Some(collections)
+    };
+    let ids = if ids.is_empty() { None } else { Some(ids) };
+
+    let bbox = filters.remove("bbox");
+    let datetime = filters.remove("datetime");
+    let _ = filters.remove("collections");
+    let _ = filters.remove("ids");
+
+    let offset = if let Some(offset_str) = filters.get("offset") {
+        match offset_str.parse::<u64>() {
+            Ok(o) => {
+                filters.remove("offset");
+                Some(o)
+            }
+            Err(e) => return Err(Box::new(e)),
+        }
+    } else {
+        None
+    };
+    let limit = if let Some(limit_str) = filters.get("limit") {
+        match limit_str.parse::<u64>() {
+            Ok(o) => {
+                filters.remove("limit");
+                Some(o)
+            }
+            Err(e) => return Err(Box::new(e)),
+        }
+    } else {
+        None
+    };
+
+    Ok(FilterParams {
+        offset,
+        limit,
+        bbox,
+        datetime,
+        filters,
+        collections,
+        ids,
+    })
+}
 
 /// fetch features
 async fn features(
     inventory: web::Data<Inventory>,
     req: HttpRequest,
-    collection_id: Option<web::Path<String>>,
+    collection_id: web::Path<String>,
 ) -> Result<HttpResponse, Error> {
-    let collection_id = match req.path().split("/").last() {
-        Some(seg) => {
-            if seg == "search" {
-                let query = req.query_string();
-                let kvs = Query::<HashMap<String, String>>::from_query(query).unwrap();
-                kvs.get("collection").cloned()
-            } else {
-                collection_id.as_deref().cloned()
-            }
-        }
-        None => collection_id.as_deref().cloned(),
-    };
-    let Some(collection_id) = collection_id else {
-        return Ok(HttpResponse::BadRequest().finish());
-    };
-
+    let fp = parse_query_params(&req)?;
     if let Some(collection) = inventory.core_collection(&collection_id) {
-        let mut filters: HashMap<String, String> =
-            match serde_urlencoded::from_str::<Vec<(String, String)>>(req.query_string()) {
-                Ok(f) => f
-                    .iter()
-                    .map(|k| (k.0.to_lowercase(), k.1.to_owned()))
-                    .collect(),
-                Err(_e) => return Ok(HttpResponse::BadRequest().finish()),
-            };
-
-        let bbox = filters.remove("bbox");
-        let datetime = filters.remove("datetime");
-        let collection = filters.remove("collection");
-
-        let offset = if let Some(offset_str) = filters.get("offset") {
-            match offset_str.parse::<u64>() {
-                Ok(o) => {
-                    filters.remove("offset");
-                    Some(o)
-                }
-                Err(_e) => return Ok(HttpResponse::BadRequest().finish()),
-            }
-        } else {
-            None
-        };
-        let limit = if let Some(limit_str) = filters.get("limit") {
-            match limit_str.parse::<u64>() {
-                Ok(o) => {
-                    filters.remove("limit");
-                    Some(o)
-                }
-                Err(_e) => return Ok(HttpResponse::BadRequest().finish()),
-            }
-        } else {
-            None
-        };
-
-        let fp = FilterParams {
-            offset,
-            limit,
-            bbox,
-            datetime,
-            filters,
-        };
-
         if let Some(features) = inventory.collection_items(&collection_id, &fp).await {
             if html_accepted(&req).await {
                 render_endpoint(
@@ -253,9 +300,6 @@ impl ServiceEndpoints for FeatureService {
                     .route(web::get().to(features)),
             )
             .service(
-                web::resource("/collections/{collectionId}/search").route(web::get().to(features)),
-            )
-            .service(
                 web::resource("/collections/{collectionId}/items/{featureId}.json")
                     .route(web::get().to(feature)),
             )
@@ -265,7 +309,8 @@ impl ServiceEndpoints for FeatureService {
             );
         #[cfg(feature = "stac")]
         cfg.service(web::resource("/catalog").route(web::get().to(catalog)))
-            .service(web::resource("/catalog.json").route(web::get().to(catalog)));
+            .service(web::resource("/catalog.json").route(web::get().to(catalog)))
+            .service(web::resource("/search").route(web::get().to(search)));
     }
 }
 
@@ -281,19 +326,15 @@ async fn catalog(
         .collections
         .iter()
         .filter_map(|c| {
-            if let Some(coll) = inventory.core_collection(c) {
-                Some(ApiLink {
-                    href: format!("{url}/collections/{}", coll.id),
-                    rel: Some("child".to_string()),
-                    type_: Some("application/json".to_string()),
-                    title: None,
-                    hreflang: None,
-                    length: None,
-                    method: None,
-                })
-            } else {
-                None
-            }
+            inventory.core_collection(c).map(|coll| ApiLink {
+                href: format!("{url}/collections/{}", coll.id),
+                rel: Some("child".to_string()),
+                type_: Some("application/json".to_string()),
+                title: None,
+                hreflang: None,
+                length: None,
+                method: None,
+            })
         })
         .collect();
 
