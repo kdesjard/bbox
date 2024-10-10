@@ -97,11 +97,7 @@ impl CollectionDatasource for PgDatasource {
             other_columns.insert(k.clone(), (v.clone(), queryable_type));
         }
         #[cfg(feature = "stac")]
-        let stac_asset_mappings = if let Some(maps) = srccfg.stac_asset_mappings.clone() {
-            maps
-        } else {
-            HashMap::new()
-        };
+        let stac_asset_mappings = srccfg.stac_asset_mappings.clone().unwrap_or_default();
 
         let temporal_column = if let Some(tc) = &srccfg.temporal_field {
             if queryable_field_map.contains_key(tc) {
@@ -138,6 +134,7 @@ impl CollectionDatasource for PgDatasource {
             ordering_column: srccfg.ordering_field.to_owned(),
             other_columns,
             max_results: srccfg.max_results,
+            field_map: queryable_field_map.clone(),
             #[cfg(feature = "stac")]
             collection: id.to_string(),
             #[cfg(feature = "stac")]
@@ -151,9 +148,9 @@ impl CollectionDatasource for PgDatasource {
 
         #[cfg(feature = "stac")]
         if srccfg.temporal_extents.is_none() {
-            return Err(Error::DatasourceSetupError(format!(
-                "temporal_extents is a required configuration item for stac compliance"
-            )));
+            return Err(Error::DatasourceSetupError(
+                "temporal_extents is a required configuration item for stac compliance".to_string(),
+            ));
         }
         let temporal_extents: Option<CoreExtentTemporal> = match srccfg.temporal_extents.to_owned()
         {
@@ -180,7 +177,7 @@ impl CollectionDatasource for PgDatasource {
             crs: vec![],
             links: vec![
                 ApiLink {
-                    href: format!("{url}"),
+                    href: url.to_string(),
                     rel: Some("root".to_string()),
                     type_: Some("application/geo+json".to_string()),
                     title: Some("The landing page of this server as JSON".to_string()),
@@ -290,6 +287,7 @@ pub struct PgCollectionSource {
     ordering_column: Option<String>,
     /// Queriable columns.
     other_columns: HashMap<String, (String, QueryableType)>,
+    field_map: HashMap<String, String>,
     max_results: Option<u64>,
     #[cfg(feature = "stac")]
     collection: String,
@@ -302,9 +300,14 @@ impl CollectionSource for PgCollectionSource {
     async fn items(&self, filter: &FilterParams) -> Result<ItemsResult> {
         let geometry_column = &self.geometry_column;
         let temporal_column = &self.temporal_column;
+        let fid = &self.pk_column;
+        if fid.is_none() && filter.ids.is_some() {
+            return Err(Error::QueryParams);
+        }
         let mut limit = filter.limit_or_default();
         let offset = filter.offset;
-        let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(format!("WITH query AS (\n"));
+        let mut builder: QueryBuilder<Postgres> =
+            QueryBuilder::new("WITH query AS (\n".to_string());
 
         builder.push(&self.sql);
         let mut where_term = self.sql.to_lowercase().contains("where");
@@ -323,6 +326,31 @@ impl CollectionSource for PgCollectionSource {
                 separated.push_bind(bbox[2]);
                 separated.push_bind(bbox[3]);
                 builder.push(") ) ");
+                where_term = true;
+            }
+            Ok(None) => {}
+            Err(e) => {
+                error!("Ignoring invalid bbox: {e}");
+                return Err(Error::QueryParams);
+            }
+        }
+        match filter.ids() {
+            Ok(Some(ids)) => {
+                let fid = fid
+                    .as_ref()
+                    .expect("Already checked if is_some essentially");
+                let actual_fid = self.field_map.get(fid).unwrap_or(fid);
+                if where_term {
+                    builder.push(" AND ");
+                } else {
+                    builder.push(" WHERE ");
+                }
+                builder.push(format!(" {actual_fid} in ("));
+                let mut separated = builder.separated(",");
+                for id in ids {
+                    separated.push_bind(id);
+                }
+                builder.push(") ");
                 where_term = true;
             }
             Ok(None) => {}
@@ -439,16 +467,16 @@ impl CollectionSource for PgCollectionSource {
         }
 
         if let Some(ord) = &self.ordering_column {
-            builder.push(&format!(" ORDER BY {ord}"));
+            builder.push(format!(" ORDER BY {ord}"));
         }
 
         if let Some(max) = self.max_results {
             if limit > max {
                 limit = max;
             }
-            builder.push(&format!(" LIMIT {limit}"));
+            builder.push(format!(" LIMIT {limit}"));
             if offset.is_some() {
-                builder.push(&format!(" OFFSET {}", offset.unwrap()));
+                builder.push(format!(" OFFSET {}", offset.unwrap()));
             }
         }
         builder.push(") ");
@@ -599,10 +627,7 @@ fn row_to_feature(row: &PgRow, colsrc: &PgCollectionSource) -> Result<CoreFeatur
             (
                 k.to_owned(),
                 STACAsset {
-                    href: properties[k]
-                        .as_str()
-                        .unwrap_or_else(|| "Missing")
-                        .to_string(),
+                    href: properties[k].as_str().unwrap_or("Missing").to_string(),
                     title: v.title.clone(),
                     description: v.description.clone(),
                     roles: v.roles.clone(),
@@ -636,7 +661,7 @@ fn row_to_feature(row: &PgRow, colsrc: &PgCollectionSource) -> Result<CoreFeatur
         let collection_id = &colsrc.collection;
         item.links = vec![
             ApiLink {
-                href: format!("{url}"),
+                href: url.to_string(),
                 rel: Some("root".to_string()),
                 type_: Some("application/geo+json".to_string()),
                 title: Some("The landing page of this server as JSON".to_string()),
@@ -801,9 +826,9 @@ async fn get_column_info(
                 tmphm.insert(colname, type_info);
             }
             let mut hm = HashMap::new();
-            for (k, v) in colmap.to_owned() {
-                if let Some(t) = tmphm.remove(&k) {
-                    hm.insert(k, (v, t));
+            for (k, v) in colmap {
+                if let Some(t) = tmphm.remove(k) {
+                    hm.insert(k.clone(), (v.clone(), t));
                 }
             }
             Ok(hm)
