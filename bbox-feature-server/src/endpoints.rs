@@ -118,8 +118,10 @@ async fn search(inventory: web::Data<Inventory>, req: HttpRequest) -> Result<Htt
     use bbox_core::ogcapi::CoreFeature;
     let mut features: Vec<CoreFeature> = vec![];
     for collection in collections {
-        if let Some(collection_features) = inventory.collection_items(collection, &fp).await {
+        if let Ok(Some(collection_features)) = inventory.collection_items(collection, &fp).await {
             features.extend(collection_features.features);
+        } else {
+            return Ok(HttpResponse::BadRequest().finish());
         }
     }
     let feature = CoreFeatures {
@@ -174,6 +176,10 @@ fn parse_query_params(req: &HttpRequest) -> Result<FilterParams, Box<dyn StdErro
     let datetime = filters.remove("datetime");
     let _ = filters.remove("collections");
     let _ = filters.remove("ids");
+    let intersects = filters.remove("intersects");
+    if bbox.is_some() && intersects.is_some() {
+        return Err("bbox and intersects are mutually exclusive options".into());
+    }
 
     let offset = if let Some(offset_str) = filters.get("offset") {
         match offset_str.parse::<u64>() {
@@ -205,6 +211,7 @@ fn parse_query_params(req: &HttpRequest) -> Result<FilterParams, Box<dyn StdErro
         datetime,
         filters,
         collections,
+        intersects,
         ids,
     })
 }
@@ -217,7 +224,7 @@ async fn features(
 ) -> Result<HttpResponse, Error> {
     let fp = parse_query_params(&req)?;
     if let Some(collection) = inventory.core_collection(&collection_id) {
-        if let Some(features) = inventory.collection_items(&collection_id, &fp).await {
+        if let Ok(Some(features)) = inventory.collection_items(&collection_id, &fp).await {
             if html_accepted(&req).await {
                 render_endpoint(
                     &TEMPLATES,
