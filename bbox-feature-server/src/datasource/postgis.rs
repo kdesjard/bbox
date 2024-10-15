@@ -366,7 +366,9 @@ impl CollectionSource for PgCollectionSource {
                 } else {
                     builder.push(" WHERE ");
                 }
-                builder.push(format!(" ( {geometry_column} && ST_GeomFromGeoJSON("));
+                builder.push(format!(
+                    " ST_Intersects({geometry_column},ST_GeomFromGeoJSON("
+                ));
                 builder.push_bind(intersects);
                 builder.push(") ) ");
                 where_term = true;
