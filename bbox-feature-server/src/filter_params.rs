@@ -1,15 +1,19 @@
+use geozero::{geojson::GeoJson, ToGeo};
 use serde::Deserialize;
 use std::collections::HashMap;
 
 #[derive(Debug, Deserialize, Default, Clone)]
 pub struct FilterParams {
     // Pagination
-    pub limit: Option<u32>,
-    pub offset: Option<u32>,
+    pub limit: Option<u64>,
+    pub offset: Option<u64>,
     // Filters
     pub bbox: Option<String>,
     pub datetime: Option<String>,
     pub filters: HashMap<String, String>,
+    pub intersects: Option<String>,
+    pub collections: Option<String>,
+    pub ids: Option<String>,
 }
 
 #[derive(Debug)]
@@ -19,10 +23,10 @@ pub enum TemporalType {
 }
 
 impl FilterParams {
-    pub fn limit_or_default(&self) -> u32 {
+    pub fn limit_or_default(&self) -> u64 {
         self.limit.unwrap_or(50)
     }
-    pub fn with_offset(&self, offset: u32) -> FilterParams {
+    pub fn with_offset(&self, offset: u64) -> FilterParams {
         let mut params = self.clone();
         params.offset = Some(offset);
         params
@@ -39,7 +43,7 @@ impl FilterParams {
     pub fn next(&self, max: u64) -> Option<FilterParams> {
         let offset = self.offset.unwrap_or(0);
         let next = offset.saturating_add(self.limit_or_default());
-        if (next as u64) < max {
+        if next < max {
             Some(self.with_offset(next))
         } else {
             None
@@ -67,7 +71,7 @@ impl FilterParams {
         }
         args
     }
-    pub fn bbox(&self) -> Result<Option<Vec<f64>>, std::num::ParseFloatError> {
+    pub fn bbox(&self) -> Result<Option<Vec<f64>>, Box<dyn std::error::Error>> {
         if let Some(bboxstr) = &self.bbox {
             let bbox: Vec<f64> = bboxstr
                 .split(',')
@@ -75,8 +79,9 @@ impl FilterParams {
                 .collect::<Result<Vec<_>, _>>()?;
             if bbox.len() == 4 || bbox.len() == 6 {
                 return Ok(Some(bbox));
+            } else {
+                return Err("Invalid length".into());
             }
-            // TODO: else return Err
         }
         Ok(None)
     }
@@ -84,15 +89,22 @@ impl FilterParams {
         if let Some(dt) = &self.datetime {
             let parts: Vec<&str> = dt.split('/').collect();
             let mut parsed_parts = vec![];
+            if parts.len() > 2 {
+                return Err("Invalid datetimes".into());
+            }
+            let mut dts = vec![];
             for part in &parts {
                 match *part {
-                    ".." => parsed_parts.push(TemporalType::Open),
+                    ".." | "" => parsed_parts.push(TemporalType::Open),
                     p => {
-                        parsed_parts.push(TemporalType::DateTime(
-                            chrono::DateTime::parse_from_rfc3339(p)?,
-                        ));
+                        let dt = chrono::DateTime::parse_from_rfc3339(p)?;
+                        parsed_parts.push(TemporalType::DateTime(dt));
+                        dts.push(dt);
                     }
                 }
+            }
+            if dts.len() == 2 && dts[0] > dts[1] {
+                return Err("Invalid datetimes".into());
             }
             return Ok(Some(parsed_parts));
         }
@@ -100,6 +112,22 @@ impl FilterParams {
     }
     pub fn other_params(&self) -> Result<&HashMap<String, String>, Box<dyn std::error::Error>> {
         Ok(&self.filters)
+    }
+    pub fn ids(&self) -> Result<Option<Vec<String>>, Box<dyn std::error::Error>> {
+        if let Some(ids) = &self.ids {
+            let ids_vec: Vec<String> = ids.split(',').map(str::to_string).collect();
+            return Ok(Some(ids_vec));
+        };
+        Ok(None)
+    }
+    pub fn intersects(&self) -> Result<Option<String>, Box<dyn std::error::Error>> {
+        if let Some(jsonstr) = &self.intersects {
+            let geojson = GeoJson(jsonstr);
+            // validate we have good GeoJSON
+            let _ = geojson.to_geo()?;
+            return Ok(Some(jsonstr.to_string()));
+        }
+        Ok(None)
     }
 }
 

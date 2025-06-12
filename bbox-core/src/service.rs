@@ -4,7 +4,7 @@ use crate::cli::{CliArgs, CommonCommands, GlobalArgs, NoArgs, NoCommands};
 use crate::config::{ConfigError, CoreServiceCfg, WebserverCfg};
 use crate::logger;
 use crate::metrics::{init_metrics_exporter, no_metrics, NoMetrics};
-use crate::ogcapi::{ApiLink, CoreCollection};
+use crate::ogcapi::{ApiLink, CoreCollection, CoreExtent, CoreExtentSpatial, CoreExtentTemporal};
 use crate::tls::load_rustls_config;
 use actix_cors::Cors;
 use actix_session::{config::PersistentSession, storage::CookieSessionStore, SessionMiddleware};
@@ -47,6 +47,9 @@ pub trait OgcApiService: Clone + Send {
         Vec::new()
     }
     fn openapi_yaml(&self) -> Option<&str> {
+        None
+    }
+    fn extents(&self) -> Option<CoreExtent> {
         None
     }
     /// Service metrics
@@ -213,6 +216,18 @@ impl OgcApiService for CoreService {
             RequestMetricsBuilder::new().build(opentelemetry::global::meter("bbox"))
         })
     }
+    fn extents(&self) -> Option<CoreExtent> {
+        Some(CoreExtent {
+            spatial: Some(CoreExtentSpatial {
+                bbox: vec![vec![-180.0, -90.0, 180.0, 90.0]],
+                crs: None,
+            }),
+            temporal: Some(CoreExtentTemporal {
+                interval: vec![vec![Some("null".to_string()), Some("null".to_string())]],
+                trs: None,
+            }),
+        })
+    }
 }
 fn core_links(api_base: &str) -> Vec<ApiLink> {
     vec![
@@ -223,6 +238,8 @@ fn core_links(api_base: &str) -> Vec<ApiLink> {
             title: Some("this document".to_string()),
             hreflang: None,
             length: None,
+            #[cfg(feature = "stac")]
+            method: None,
         },
         ApiLink {
             href: format!("{api_base}/openapi.json"),
@@ -231,6 +248,8 @@ fn core_links(api_base: &str) -> Vec<ApiLink> {
             title: Some("the API definition".to_string()),
             hreflang: None,
             length: None,
+            #[cfg(feature = "stac")]
+            method: None,
         },
         ApiLink {
             href: format!("{api_base}/openapi.yaml"),
@@ -239,6 +258,8 @@ fn core_links(api_base: &str) -> Vec<ApiLink> {
             title: Some("the API definition".to_string()),
             hreflang: None,
             length: None,
+            #[cfg(feature = "stac")]
+            method: None,
         },
         ApiLink {
             href: format!("{api_base}/conformance"),
@@ -247,6 +268,8 @@ fn core_links(api_base: &str) -> Vec<ApiLink> {
             title: Some("OGC API conformance classes implemented by this server".to_string()),
             hreflang: None,
             length: None,
+            #[cfg(feature = "stac")]
+            method: None,
         },
     ]
 }

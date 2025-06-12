@@ -33,6 +33,7 @@ impl OgcApiService for FeatureService {
                 .unwrap_or_else(error_exit);
             inventory.add_collection(collection);
         }
+        inventory.set_catalog(config.catalog.to_owned());
         FeatureService { inventory }
     }
     fn conformance_classes(&self) -> Vec<String> {
@@ -48,17 +49,108 @@ impl OgcApiService for FeatureService {
                 "http://www.opengis.net/spec/ogcapi-features-1/1.0/conf/html".to_string(),
             ]);
         }
+        if cfg!(feature = "stac") {
+            classes.extend(vec![
+                "https://api.stacspec.org/v1.0.0/core".to_string(),
+                "https://api.stacspec.org/v1.0.0/ogcapi-features".to_string(),
+                "https://api.stacspec.org/v1.0.0/item-search".to_string(),
+            ]);
+        }
         classes
     }
     fn landing_page_links(&self, api_base: &str) -> Vec<ApiLink> {
-        vec![ApiLink {
-            href: format!("{api_base}/collections"),
-            rel: Some("data".to_string()),
-            type_: Some("application/json".to_string()),
-            title: Some("Information about the feature collections".to_string()),
-            hreflang: None,
-            length: None,
-        }]
+        #[allow(unused_mut)]
+        let mut links = vec![
+            #[cfg(feature = "stac")]
+            ApiLink {
+                href: api_base.to_string(),
+                rel: Some("self".to_string()),
+                type_: Some("application/json".to_string()),
+                title: None,
+                hreflang: None,
+                length: None,
+                #[cfg(feature = "stac")]
+                method: None,
+            },
+            #[cfg(feature = "stac")]
+            ApiLink {
+                href: api_base.to_string(),
+                rel: Some("root".to_string()),
+                type_: Some("application/json".to_string()),
+                title: None,
+                hreflang: None,
+                length: None,
+                #[cfg(feature = "stac")]
+                method: None,
+            },
+            #[cfg(feature = "stac")]
+            ApiLink {
+                href: format!("{api_base}/catalog"),
+                rel: Some("child".to_string()),
+                type_: Some("application/json".to_string()),
+                title: Some("Information about the catalog".to_string()),
+                hreflang: None,
+                length: None,
+                #[cfg(feature = "stac")]
+                method: None,
+            },
+            ApiLink {
+                href: format!("{api_base}/collections"),
+                rel: Some("data".to_string()),
+                type_: Some("application/json".to_string()),
+                title: Some("Information about the feature collections".to_string()),
+                hreflang: None,
+                length: None,
+                #[cfg(feature = "stac")]
+                method: None,
+            },
+            ApiLink {
+                href: format!("{api_base}/openapi.json"),
+                rel: Some("service-desc".to_string()),
+                type_: Some("application/json".to_string()),
+                //type_: Some("application/vnd.oai.openapi+json;version=3.0".to_string()),
+                title: Some("the API definition".to_string()),
+                hreflang: None,
+                length: None,
+                #[cfg(feature = "stac")]
+                method: None,
+            },
+            ApiLink {
+                href: format!("{api_base}/conformance"),
+                rel: Some("conformance".to_string()),
+                type_: Some("application/json".to_string()),
+                title: Some("OGC conformance classes implemented by this API".to_string()),
+                hreflang: None,
+                length: None,
+                #[cfg(feature = "stac")]
+                method: None,
+            },
+            #[cfg(feature = "stac")]
+            ApiLink {
+                href: format!("{api_base}/search"),
+                rel: Some("search".to_string()),
+                type_: Some("application/geo+json".to_string()),
+                title: Some("search".to_string()),
+                hreflang: None,
+                length: None,
+                #[cfg(feature = "stac")]
+                method: Some("GET".to_string()),
+            },
+        ];
+        #[cfg(feature = "stac")]
+        for collection in self.inventory.collections() {
+            links.push(ApiLink {
+                href: format!("{url}/collections/{}", collection.id),
+                rel: Some("child".to_string()),
+                type_: Some("application/geo+json".to_string()),
+                title: Some(collection.id),
+                hreflang: None,
+                length: None,
+                #[cfg(feature = "stac")]
+                method: None,
+            });
+        }
+        links
     }
     fn collections(&self) -> Vec<CoreCollection> {
         self.inventory.collections()

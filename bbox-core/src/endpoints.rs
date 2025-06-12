@@ -85,9 +85,20 @@ pub fn absurl(req: &HttpRequest, path: &str) -> String {
 async fn index(ogcapi: web::Data<OgcApiInventory>, _req: HttpRequest) -> HttpResponse {
     // Make links absolute. Some clients (like OGC conformance tester) expect it.
     let landing_page = CoreLandingPage {
+        #[cfg(feature = "stac")]
+        r#type: Some("Catalog".to_string()),
+        #[cfg(feature = "stac")]
+        stac_version: Some("1.0.0".to_string()),
+        #[cfg(feature = "stac")]
+        id: Some("STAC Catalog".to_string()),
         title: Some("BBOX OGC API".to_string()),
         description: Some("BBOX OGC API landing page".to_string()),
         links: ogcapi.landing_page_links.clone(),
+        #[cfg(feature = "stac")]
+        conforms_to: CoreConformsTo {
+            conforms_to: ogcapi.conformance_classes.clone(),
+        },
+        extent: Some(ogcapi.extents.clone()),
     };
     HttpResponse::Ok().json(landing_page)
 }
