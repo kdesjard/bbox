@@ -17,6 +17,8 @@ use log::{debug, error, info, warn};
 use serde_json::json;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions, SqliteRow};
 use sqlx::{Column, Executor, Row, TypeInfo};
+#[cfg(feature = "stac")]
+use std::collections::HashMap;
 
 #[derive(Clone, Debug)]
 pub struct SqliteDatasource {
@@ -92,12 +94,17 @@ impl CollectionDatasource for SqliteDatasource {
             sql,
             geometry_column,
             pk_column,
+            #[cfg(feature = "stac")]
+            collection: id.to_string(),
         };
 
         let collection = CoreCollection {
             id: id.clone(),
             title: cfg.title.clone(),
+            #[cfg(feature = "stac")]
             description: cfg.description.clone(),
+            #[cfg(not(feature = "stac"))]
+            description: Some(cfg.description.clone()),
             extent,
             item_type: None,
             crs: vec![],
@@ -108,7 +115,15 @@ impl CollectionDatasource for SqliteDatasource {
                 title: cfg.title.clone(),
                 hreflang: None,
                 length: None,
+                #[cfg(feature = "stac")]
+                method: None,
             }],
+            #[cfg(feature = "stac")]
+            stac_version: "1.0.0".to_string(),
+            #[cfg(feature = "stac")]
+            stac_type: STACType::Collection,
+            #[cfg(feature = "stac")]
+            license: cfg.license.clone(),
         };
         let fc = FeatureCollection {
             collection,
@@ -154,6 +169,8 @@ impl AutoscanCollectionDatasource for SqliteDatasource {
                 name: id.clone(),
                 title: Some(title),
                 description: row.try_get("description")?,
+                #[cfg(feature = "stac")]
+                license: String::new(),
             };
             if let Ok(fc) = self
                 .setup_collection(&coll_cfg, base_url, Some(extent))
@@ -174,6 +191,8 @@ pub struct GpkgCollectionSource {
     // geometry_type_name: String,
     /// Primary key column, None if multi column key.
     pk_column: Option<String>,
+    #[cfg(feature = "stac")]
+    collection: String,
 }
 
 #[async_trait]
@@ -208,7 +227,7 @@ impl CollectionSource for GpkgCollectionSource {
             .collect::<Result<Vec<_>>>()?;
         let result = ItemsResult {
             features: items,
-            number_matched,
+            number_matched: Some(number_matched),
             number_returned,
         };
         Ok(result)
@@ -244,6 +263,8 @@ impl CollectionSource for GpkgCollectionSource {
                     title: Some("this document".to_string()),
                     hreflang: None,
                     length: None,
+                    #[cfg(feature = "stac")]
+                    method: None,
                 },
                 ApiLink {
                     href: format!("{base_url}/collections/{collection_id}"),
@@ -252,6 +273,8 @@ impl CollectionSource for GpkgCollectionSource {
                     title: Some("the collection document".to_string()),
                     hreflang: None,
                     length: None,
+                    #[cfg(feature = "stac")]
+                    method: None,
                 },
             ];
             Ok(Some(item))
@@ -301,6 +324,12 @@ fn row_to_feature(row: &SqliteRow, table_info: &GpkgCollectionSource) -> Result<
         geometry: serde_json::from_str(&geom.0).map_err(|_| error::Error::GeometryFormatError)?,
         properties: Some(properties),
         links: vec![],
+        #[cfg(feature = "stac")]
+        stac_version: "1.0.0".to_string(),
+        #[cfg(feature = "stac")]
+        stac_type: STACType::Collection,
+        #[cfg(feature = "stac")]
+        license: cfg.license.clone(),
     };
 
     Ok(item)

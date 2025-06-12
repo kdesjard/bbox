@@ -838,6 +838,7 @@ dependencies = [
  "clap",
  "dyn-clone",
  "futures",
+ "geo-types",
  "geozero",
  "log",
  "minijinja",

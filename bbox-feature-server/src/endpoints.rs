@@ -4,11 +4,14 @@ use crate::service::FeatureService;
 use actix_web::{web, Error, HttpRequest, HttpResponse};
 use bbox_core::api::OgcApiInventory;
 use bbox_core::ogcapi::{ApiLink, CoreCollections};
+#[cfg(feature = "stac")]
+use bbox_core::ogcapi::{CoreFeature, CoreFeatures, STACCatalog};
 use bbox_core::service::ServiceEndpoints;
 use bbox_core::templates::{create_env_embedded, html_accepted, render_endpoint};
 use minijinja::{context, Environment};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
+use std::error::Error as StdError;
 
 /// the feature collections in the dataset
 async fn collections(
@@ -17,14 +20,30 @@ async fn collections(
     req: HttpRequest,
 ) -> Result<HttpResponse, Error> {
     let collections = CoreCollections {
-        links: vec![ApiLink {
-            href: format!("{}/collections.json", inventory.href_prefix()),
-            rel: Some("self".to_string()),
-            type_: Some("application/json".to_string()),
-            title: Some("this document".to_string()),
-            hreflang: None,
-            length: None,
-        }],
+        #[cfg(feature = "stac")]
+        r#type: "Catalog".to_string(),
+        links: vec![
+            ApiLink {
+                href: url.to_string(),
+                rel: Some("root".to_string()),
+                type_: Some("application/json".to_string()),
+                title: Some("landing page".to_string()),
+                hreflang: None,
+                length: None,
+                #[cfg(feature = "stac")]
+                method: None,
+            },
+            ApiLink {
+                href: format!("{url}/collections"),
+                rel: Some("self".to_string()),
+                type_: Some("application/json".to_string()),
+                title: Some("this document".to_string()),
+                hreflang: None,
+                length: None,
+                #[cfg(feature = "stac")]
+                method: None,
+            },
+        ],
         //TODO: include also collections from other services
         collections: inventory.collections(), //TODO: convert urls with absurl (?)
     };
@@ -84,6 +103,106 @@ async fn queryables(
     } else {
         Ok(HttpResponse::NotFound().finish())
     }
+}
+
+/// fetch all features
+#[cfg(feature = "stac")]
+async fn search(inventory: web::Data<Inventory>, req: HttpRequest) -> Result<HttpResponse, Error> {
+    let fp = match parse_query_params(&req) {
+        Ok(filters) => filters,
+        Err(e) => {
+            log::error!("{e}");
+            return Ok(HttpResponse::BadRequest().finish());
+        }
+    };
+
+    let inventory_collections: Vec<String> = inventory
+        .collections()
+        .iter()
+        .map(|c| c.id.clone())
+        .collect();
+    let collections = match fp.collections {
+        Some(ref colls) => &colls.split(',').map(str::to_string).collect(),
+        None => &inventory_collections,
+    };
+    let mut features: Vec<CoreFeature> = vec![];
+    for collection in collections {
+        if let Ok(Some(collection_features)) = inventory.collection_items(collection, &fp).await {
+            features.extend(collection_features.features);
+        } else {
+            return Ok(HttpResponse::BadRequest().finish());
+        }
+    }
+    let feature = CoreFeatures {
+        type_: "FeatureCollection".to_string(),
+        links: vec![],
+        number_matched: Some(features.len() as u64),
+        number_returned: Some(features.len() as u64),
+        time_stamp: None,
+        features,
+    };
+    Ok(HttpResponse::Ok()
+        .content_type("application/geo+json")
+        .json(feature))
+}
+
+fn parse_query_params(req: &HttpRequest) -> Result<FilterParams, Box<dyn StdError>> {
+    let Ok(pairs) = serde_urlencoded::from_str::<Vec<(String, String)>>(req.query_string()) else {
+        return Err("Bad".into());
+    };
+    let mut filters: HashMap<String, String> = pairs
+        .iter()
+        .filter_map(|(k, v)| {
+            if k != "collections" || k != "ids" {
+                Some((k.to_owned(), v.to_owned()))
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    let bbox = filters.remove("bbox");
+    let datetime = filters.remove("datetime");
+    let collections = filters.remove("collections");
+    let ids = filters.remove("ids");
+    let intersects = filters.remove("intersects");
+    if bbox.is_some() && intersects.is_some() {
+        return Err("bbox and intersects are mutually exclusive options".into());
+    }
+
+    let offset = if let Some(offset_str) = filters.get("offset") {
+        match offset_str.parse::<u64>() {
+            Ok(o) => {
+                filters.remove("offset");
+                Some(o)
+            }
+            Err(e) => return Err(Box::new(e)),
+        }
+    } else {
+        None
+    };
+    let limit = if let Some(limit_str) = filters.get("limit") {
+        match limit_str.parse::<u64>() {
+            Ok(o) => {
+                filters.remove("limit");
+                Some(o)
+            }
+            Err(e) => return Err(Box::new(e)),
+        }
+    } else {
+        None
+    };
+
+    Ok(FilterParams {
+        offset,
+        limit,
+        bbox,
+        datetime,
+        filters,
+        collections,
+        intersects,
+        ids,
+    })
 }
 
 /// fetch features
@@ -229,5 +348,83 @@ impl ServiceEndpoints for FeatureService {
                 web::resource("/collections/{collectionId}/items/{featureId}")
                     .route(web::get().to(feature)),
             );
+        #[cfg(feature = "stac")]
+        cfg.service(web::resource("/catalog").route(web::get().to(catalog)))
+            .service(web::resource("/catalog.json").route(web::get().to(catalog)))
+            .service(web::resource("/search").route(web::get().to(search)));
+    }
+}
+
+#[cfg(feature = "stac")]
+async fn catalog(
+    _ogcapi: web::Data<OgcApiInventory>,
+    inventory: web::Data<Inventory>,
+    req: HttpRequest,
+) -> Result<HttpResponse, Error> {
+    let catalog_cfg = inventory.catalog();
+    let url = PUBLIC_SERVER_URL.get().unwrap();
+    let mut collection_links: Vec<ApiLink> = catalog_cfg
+        .collections
+        .iter()
+        .filter_map(|c| {
+            inventory.core_collection(c).map(|coll| ApiLink {
+                href: format!("{url}/collections/{}", coll.id),
+                rel: Some("child".to_string()),
+                type_: Some("application/json".to_string()),
+                title: None,
+                hreflang: None,
+                length: None,
+                method: None,
+            })
+        })
+        .collect();
+
+    let mut catalog = STACCatalog {
+        id: catalog_cfg.title.clone(),
+        r#type: "Catalog".to_string(),
+        title: Some(catalog_cfg.title),
+        description: catalog_cfg.description,
+        stac_version: "1.0.0".to_string(),
+        stac_extensions: None,
+        links: vec![
+            ApiLink {
+                href: format!("{url}/catalog.json"),
+                rel: Some("root".to_string()),
+                type_: Some("application/json".to_string()),
+                title: Some("this document".to_string()),
+                hreflang: None,
+                length: None,
+                method: None,
+            },
+            ApiLink {
+                href: format!("{url}/collections"),
+                rel: Some("collections".to_string()),
+                type_: Some("application/json".to_string()),
+                title: Some("collections".to_string()),
+                hreflang: None,
+                length: None,
+                method: None,
+            },
+            ApiLink {
+                href: format!("{url}/catalog.json"),
+                rel: Some("self".to_string()),
+                type_: Some("application/json".to_string()),
+                title: Some("this document".to_string()),
+                hreflang: None,
+                length: None,
+                method: None,
+            },
+        ],
+    };
+    catalog.links.append(&mut collection_links);
+    if html_accepted(&req).await {
+        render_endpoint(
+            &TEMPLATES,
+            "catalog.html",
+            context!(cur_menu=>"Catalog", catalog => &catalog),
+        )
+        .await
+    } else {
+        Ok(HttpResponse::Ok().json(catalog))
     }
 }

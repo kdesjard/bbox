@@ -1,4 +1,4 @@
-use crate::config::CollectionsCfg;
+use crate::config::{CollectionsCfg, STACCatalogCfg};
 use crate::datasource::{gpkg::SqliteDatasource, AutoscanCollectionDatasource, CollectionSource};
 use crate::filter_params::FilterParams;
 use bbox_core::file_search;
@@ -26,6 +26,7 @@ pub struct Inventory {
     // Key: collection_id
     feat_collections: HashMap<String, FeatureCollection>,
     base_url: String,
+    catalog: STACCatalogCfg,
 }
 
 #[derive(Clone)]
@@ -47,6 +48,7 @@ impl Inventory {
         Inventory {
             feat_collections: HashMap::new(),
             base_url,
+            catalog: STACCatalogCfg::default(),
         }
     }
 
@@ -118,6 +120,10 @@ impl Inventory {
         }
     }
 
+    pub fn set_catalog(&mut self, cat: STACCatalogCfg) {
+        self.catalog = cat;
+    }
+
     /// Return all collections as vector
     pub fn collections(&self) -> Vec<CoreCollection> {
         self.feat_collections
@@ -140,16 +146,16 @@ impl Inventory {
         &self,
         collection_id: &str,
         filter: &FilterParams,
-    ) -> Option<CoreFeatures> {
+    ) -> Result<Option<CoreFeatures>, Box<dyn std::error::Error>> {
         let Some(fc) = self.collection(collection_id) else {
             warn!("Ignoring error getting collection {collection_id}");
-            return None;
+            return Err("Invalid collection".into());
         };
         let items = match fc.source.items(filter).await {
             Ok(items) => items,
             Err(e) => {
                 warn!("Ignoring error getting collection items for {collection_id}: {e}");
-                return None;
+                return Err(Box::new(e));
             }
         };
         let base_url = self.href_prefix();
@@ -157,12 +163,34 @@ impl Inventory {
             type_: "FeatureCollection".to_string(),
             links: vec![
                 ApiLink {
+                    href: format!("{base_url}/"),
+                    rel: Some("root".to_string()),
+                    type_: Some("application/json".to_string()),
+                    title: Some("The landing page of this server".to_string()),
+                    hreflang: None,
+                    length: None,
+                    #[cfg(feature = "stac")]
+                    method: None,
+                },
+                ApiLink {
+                    href: format!("{base_url}/collections/{collection_id}"),
+                    rel: Some("collection".to_string()),
+                    type_: Some("application/geo+json".to_string()),
+                    title: Some("the collection document".to_string()),
+                    hreflang: None,
+                    length: None,
+                    #[cfg(feature = "stac")]
+                    method: None,
+                },
+                ApiLink {
                     href: format!("{base_url}/collections/{collection_id}/items"),
                     rel: Some("self".to_string()),
                     type_: Some("text/html".to_string()),
                     title: Some("this document".to_string()),
                     hreflang: None,
                     length: None,
+                    #[cfg(feature = "stac")]
+                    method: None,
                 },
                 ApiLink {
                     href: format!("{base_url}/collections/{collection_id}/items.json"),
@@ -171,6 +199,8 @@ impl Inventory {
                     title: Some("this document".to_string()),
                     hreflang: None,
                     length: None,
+                    #[cfg(feature = "stac")]
+                    method: None,
                 },
             ],
             time_stamp: None, // time when the response was generated

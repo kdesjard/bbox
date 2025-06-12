@@ -14,6 +14,7 @@ homepage.workspace = true
 
 [features]
 html = ["bbox-core/html"]
+stac = ["bbox-core/stac"]
 
 [dependencies]
 actix-web = { workspace = true }
@@ -23,6 +24,7 @@ chrono = { workspace = true }
 clap = { workspace = true }
 dyn-clone = "1.0.6"
 futures = { workspace = true }
+geo-types = "0.7.13"
 geozero = { workspace = true, features = [ "with-gpkg", "with-postgis-sqlx" ] }
 log = { workspace = true }
 minijinja = { workspace = true }

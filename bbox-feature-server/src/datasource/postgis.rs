@@ -1,6 +1,8 @@
 //! PostGIS feature source.
 
 use crate::config::PostgisCollectionCfg;
+#[cfg(feature = "stac")]
+use crate::config::STACAssetCfg;
 use crate::datasource::{
     AutoscanCollectionDatasource, CollectionDatasource, CollectionSource, CollectionSourceCfg,
     ConfiguredCollectionCfg, ItemsResult,
@@ -41,8 +43,8 @@ impl CollectionDatasource for PgDatasource {
         } else if srccfg.table_name.is_some() && srccfg.sql.is_some() {
             warn!("Datasource`{id}`: configuration `table_name` ignored, using `sql` instead");
         }
-        let temporal_column = srccfg.temporal_field.clone();
-        let temporal_end_column = srccfg.temporal_end_field.clone();
+        let mut queryable_field_map = srccfg.queryable_field_mappings.clone();
+
         let (pk_column, geometry_column, sql) = if let Some(table_name) = &srccfg.table_name {
             let public = "public".to_string();
             let table_schema = srccfg.table_schema.as_ref().unwrap_or(&public);
@@ -60,30 +62,28 @@ impl CollectionDatasource for PgDatasource {
         } else {
             let pk_column = srccfg.fid_field.clone();
             // TODO: We should also allow user queries without geometry
-            let geometry_column =
+            let geometry_field =
                 srccfg
                     .geometry_field
                     .clone()
                     .ok_or(Error::DatasourceSetupError(format!(
                         "Datasource `{id}`: configuration `geometry_field` missing"
                     )))?;
+            let geometry_column = if queryable_field_map.contains_key(&geometry_field) {
+                queryable_field_map.remove(&geometry_field).unwrap()
+            } else {
+                geometry_field
+            };
             let sql = check_query(self, srccfg.sql.clone().expect("config checked")).await?;
             (pk_column, geometry_column, sql)
         };
         if pk_column.is_none() {
             warn!("Datasource `{id}`: `fid_field` missing - single item queries will be ignored");
         }
-        let mut queryable_fields = srccfg.queryable_fields.clone();
-        if let Some(ref t) = temporal_column {
-            queryable_fields.push(t.clone());
-        }
-        if let Some(ref t) = temporal_end_column {
-            queryable_fields.push(t.clone());
-        }
-        let queryables_types = get_column_info(self, &sql, Some(&queryable_fields)).await?;
+        let queryables_types = get_column_info(self, &sql, &queryable_field_map).await?;
         let mut other_columns = HashMap::new();
-        for (k, v) in &queryables_types {
-            let queryable_type = match v.to_string().as_str() {
+        for (k, (v, t)) in &queryables_types {
+            let queryable_type = match t.to_string().as_str() {
                 "TEXT" | "VARCHAR" | "CHAR" => QueryableType::String,
                 "INT4" | "INT8" => QueryableType::Integer,
                 "FLOAT4" | "FLOAT8" => QueryableType::Number,
@@ -95,17 +95,51 @@ impl CollectionDatasource for PgDatasource {
                     )))
                 }
             };
-            other_columns.insert(k.clone(), queryable_type);
+            other_columns.insert(k.clone(), (v.clone(), queryable_type));
         }
+        #[cfg(feature = "stac")]
+        let stac_asset_mappings = srccfg.stac_asset_mappings.clone().unwrap_or_default();
+
+        let temporal_column = if let Some(tc) = &srccfg.temporal_field {
+            if queryable_field_map.contains_key(tc) {
+                queryable_field_map.remove(tc)
+            } else {
+                Some(tc.clone())
+            }
+        } else {
+            None
+        };
+        let temporal_end_column = if let Some(tc) = &srccfg.temporal_end_field {
+            if queryable_field_map.contains_key(tc) {
+                queryable_field_map.remove(tc)
+            } else {
+                Some(tc.clone())
+            }
+        } else {
+            None
+        };
 
         let source = PgCollectionSource {
             ds: self.clone(),
             sql,
+            geometry_field: srccfg
+                .geometry_field
+                .to_owned()
+                .ok_or(Error::DatasourceSetupError(format!(
+                    "Datasource `{id}`: configuration `geometry_field` missing"
+                )))?,
             geometry_column,
             pk_column,
             temporal_column,
             temporal_end_column,
+            ordering_column: srccfg.ordering_field.to_owned(),
             other_columns,
+            max_results: srccfg.max_results,
+            field_map: queryable_field_map.clone(),
+            #[cfg(feature = "stac")]
+            collection: id.to_string(),
+            #[cfg(feature = "stac")]
+            stac_asset_mappings,
         };
 
         let bbox = source
@@ -113,37 +147,101 @@ impl CollectionDatasource for PgDatasource {
             .await
             .unwrap_or(vec![-180.0, -90.0, 180.0, 90.0]);
 
+        #[cfg(feature = "stac")]
+        if srccfg.temporal_extents.is_none() {
+            return Err(Error::DatasourceSetupError(
+                "temporal_extents is a required configuration item for stac compliance".to_string(),
+            ));
+        }
+        let temporal_extents: Option<CoreExtentTemporal> = match srccfg.temporal_extents.to_owned()
+        {
+            Some(t) => Some(
+                t.try_into()
+                    .map_err(|e: &str| Error::DatasourceSetupError(e.to_string()))?,
+            ),
+            None => None,
+        };
+        let url = PUBLIC_SERVER_URL.get().unwrap();
+
         let mut collection = CoreCollection {
             id: id.clone(),
             title: Some(id.clone()),
+            #[cfg(feature = "stac")]
             description: cfg.description.clone(),
+            #[cfg(not(feature = "stac"))]
+            description: Some(cfg.description.clone()),
             extent: Some(CoreExtent {
                 spatial: Some(CoreExtentSpatial {
                     bbox: vec![bbox],
                     crs: None,
                 }),
-                temporal: None,
+                temporal: temporal_extents,
             }),
             item_type: None,
             crs: vec![],
-            links: vec![ApiLink {
-                href: format!("{base_url}/collections/{id}/items"),
-                rel: Some("items".to_string()),
-                type_: Some("application/geo+json".to_string()),
-                title: Some(id.clone()),
-                hreflang: None,
-                length: None,
-            }],
+            links: vec![
+                ApiLink {
+                    href: url.to_string(),
+                    rel: Some("root".to_string()),
+                    type_: Some("application/geo+json".to_string()),
+                    title: Some("The landing page of this server as JSON".to_string()),
+                    hreflang: None,
+                    length: None,
+                    #[cfg(feature = "stac")]
+                    method: None,
+                },
+                ApiLink {
+                    #[cfg(feature = "stac")]
+                    href: format!("{url}/catalog"),
+                    #[cfg(not(feature = "stac"))]
+                    href: format!("{url}/collections"),
+                    rel: Some("parent".to_string()),
+                    type_: Some("application/geo+json".to_string()),
+                    title: Some("This document as JSON".to_string()),
+                    hreflang: None,
+                    length: None,
+                    #[cfg(feature = "stac")]
+                    method: None,
+                },
+                ApiLink {
+                    href: format!("{url}/collections/{id}"),
+                    rel: Some("self".to_string()),
+                    type_: Some("application/geo+json".to_string()),
+                    title: Some("This document as JSON".to_string()),
+                    hreflang: None,
+                    length: None,
+                    #[cfg(feature = "stac")]
+                    method: None,
+                },
+                ApiLink {
+                    href: format!("{url}/collections/{id}/items"),
+                    rel: Some("items".to_string()),
+                    type_: Some("application/geo+json".to_string()),
+                    title: Some(id.clone()),
+                    hreflang: None,
+                    length: None,
+                    #[cfg(feature = "stac")]
+                    method: None,
+                },
+            ],
+            #[cfg(feature = "stac")]
+            stac_version: "1.0.0".to_string(),
+            #[cfg(feature = "stac")]
+            stac_type: STACType::Collection,
+            #[cfg(feature = "stac")]
+            license: cfg.license.clone(),
         };
 
-        if !queryable_fields.is_empty() {
+        if queryable_field_map.keys().len() > 0 {
             collection.links.push(ApiLink {
-                href: format!("{base_url}/collections/{id}/queryables"),
+                href: format!("{url}/collections/{id}/queryables"),
                 rel: Some("http://www.opengis.net/def/rel/ogc/1.0/queryables".to_string()),
                 type_: Some("application/schema+json".to_string()),
                 title: Some(id.clone()),
                 hreflang: None,
                 length: None,
+                #[cfg(feature = "stac")]
+                method: None,
             })
         }
 
@@ -177,7 +275,9 @@ impl AutoscanCollectionDatasource for PgDatasource {
                 }),
                 name: table_name.clone(),
                 title: Some(table_name),
-                description: None,
+                description: String::new(),
+                #[cfg(feature = "stac")]
+                license: String::new(),
             };
             if let Ok(fc) = self.setup_collection(&coll_cfg, base_url, None).await {
                 collections.push(fc);
@@ -191,13 +291,21 @@ impl AutoscanCollectionDatasource for PgDatasource {
 pub struct PgCollectionSource {
     ds: PgDatasource,
     sql: String,
+    geometry_field: String,
     geometry_column: String,
     /// Primary key column, None if multi column key.
     pk_column: Option<String>,
     temporal_column: Option<String>,
     temporal_end_column: Option<String>,
+    ordering_column: Option<String>,
     /// Queriable columns.
     other_columns: HashMap<String, QueryableType>,
+    field_map: HashMap<String, String>,
+    max_results: Option<u64>,
+    #[cfg(feature = "stac")]
+    collection: String,
+    #[cfg(feature = "stac")]
+    stac_asset_mappings: HashMap<String, STACAssetCfg>,
 }
 
 #[async_trait]
@@ -205,29 +313,26 @@ impl CollectionSource for PgCollectionSource {
     async fn items(&self, filter: &FilterParams) -> Result<ItemsResult> {
         let geometry_column = &self.geometry_column;
         let temporal_column = &self.temporal_column;
+        let fid = &self.pk_column;
+        if fid.is_none() && filter.ids.is_some() {
+            return Err(Error::QueryParams);
+        }
+        let mut limit = filter.limit_or_default();
+        let offset = filter.offset;
         let mut builder: QueryBuilder<Postgres> =
-            QueryBuilder::new(format!("WITH query AS ({sql})\n", sql = &self.sql));
-        let select_sql = if let Some(pk) = &self.pk_column {
-            format!(
-                r#"SELECT to_jsonb(t.*)-'{geometry_column}'-'{pk}' AS properties, ST_AsGeoJSON({geometry_column})::jsonb AS geometry,
-                    "{pk}"::varchar AS pk,
-                      count(*) OVER () AS __total_cnt
-                   FROM query t"#,
-            )
-        } else {
-            format!(
-                r#"SELECT to_jsonb(t.*)-'{geometry_column}' AS properties, ST_AsGeoJSON({geometry_column})::jsonb AS geometry,
-                      NULL AS pk,
-                      --row_number() OVER () ::varchar AS pk,
-                      count(*) OVER () AS __total_cnt
-               FROM query t"#,
-            )
-        };
-        builder.push(&select_sql);
-        let mut where_term = false;
+            QueryBuilder::new("WITH query AS (\n".to_string());
+
+        builder.push(&self.sql);
+        let mut where_term = self.sql.to_lowercase().contains("where");
+
         match filter.bbox() {
             Ok(Some(bbox)) => {
-                builder.push(format!(" WHERE ( {geometry_column} && ST_MakeEnvelope("));
+                if where_term {
+                    builder.push(" AND ");
+                } else {
+                    builder.push(" WHERE ");
+                }
+                builder.push(format!(" ( {geometry_column} && ST_MakeEnvelope("));
                 let mut separated = builder.separated(",");
                 separated.push_bind(bbox[0]);
                 separated.push_bind(bbox[1]);
@@ -241,6 +346,48 @@ impl CollectionSource for PgCollectionSource {
                 error!("Ignoring invalid bbox: {e}");
                 return Err(Error::QueryParams);
             }
+        }
+        match filter.ids() {
+            Ok(Some(ids)) => {
+                let fid = fid
+                    .as_ref()
+                    .expect("Already checked if is_some essentially");
+                let actual_fid = self.field_map.get(fid).unwrap_or(fid);
+                if where_term {
+                    builder.push(" AND ");
+                } else {
+                    builder.push(" WHERE ");
+                }
+                builder.push(format!(" {actual_fid} in ("));
+                let mut separated = builder.separated(",");
+                for id in ids {
+                    separated.push_bind(id);
+                }
+                builder.push(") ");
+                where_term = true;
+            }
+            Ok(None) => {}
+            Err(e) => {
+                error!("Ignoring invalid bbox: {e}");
+                return Err(Error::QueryParams);
+            }
+        }
+        match filter.intersects() {
+            Ok(Some(intersects)) => {
+                if where_term {
+                    builder.push(" AND ");
+                } else {
+                    builder.push(" WHERE ");
+                }
+                builder.push(format!(
+                    " ST_Intersects({geometry_column},ST_GeomFromGeoJSON("
+                ));
+                builder.push_bind(intersects);
+                builder.push(") ) ");
+                where_term = true;
+            }
+            Ok(None) => {}
+            Err(_) => {}
         }
         if let Some(temporal_column) = temporal_column {
             let temporal_end_column = self.temporal_end_column.as_ref().unwrap_or(temporal_column);
@@ -256,7 +403,7 @@ impl CollectionSource for PgCollectionSource {
                         if let TemporalType::DateTime(dt) = parts[0] {
                             builder.push(format!(" {temporal_column} = ",));
                             builder.push_bind(dt);
-                            debug!("{temporal_column} = {}", dt);
+                            debug!("{temporal_column} = {dt}");
                         }
                     } else {
                         match parts[0] {
@@ -268,22 +415,22 @@ impl CollectionSource for PgCollectionSource {
                                 TemporalType::DateTime(dt) => {
                                     builder.push(format!(" {temporal_column} <= ",));
                                     builder.push_bind(dt);
-                                    debug!("{temporal_column} <= {}", dt);
+                                    debug!("{temporal_column} <= {dt}");
                                 }
                             },
                             TemporalType::DateTime(dt1) => match parts[1] {
                                 TemporalType::Open => {
                                     builder.push(format!(" {temporal_column} >= ",));
                                     builder.push_bind(dt1);
-                                    debug!("{temporal_column} >= {}", dt1);
+                                    debug!("{temporal_column} >= {dt1}");
                                 }
                                 TemporalType::DateTime(dt2) => {
                                     builder.push(format!(" {temporal_column} >= "));
                                     builder.push_bind(dt1);
-                                    debug!("{temporal_column} >= {}", dt1);
+                                    debug!("{temporal_column} >= {dt1}");
                                     builder.push(format!(" and {temporal_end_column} <= ",));
                                     builder.push_bind(dt2);
-                                    debug!("{temporal_column} <= {}", dt2);
+                                    debug!("{temporal_column} <= {dt2}");
                                 }
                             },
                         }
@@ -311,15 +458,16 @@ impl CollectionSource for PgCollectionSource {
                     // check if the passed in field matches queryables
                     // detect if value has wildcards
                     if let Some((k, v)) = self.other_columns.get_key_value(key) {
+                        let (colname, coltype) = v;
                         if val.rfind('*').is_some() {
-                            separated.push(format!("{k}::text like "));
+                            separated.push(format!("{colname}::text like "));
                             let val = val.replace('*', "%");
-                            debug!("{k}::text like {val}");
+                            debug!("{k}::text like {val} - {coltype:#?}");
                             separated.push_bind_unseparated(val);
                         } else {
-                            separated.push(format!("{k}="));
-                            debug!("{k} = {val}");
-                            match v {
+                            separated.push(format!("{colname}="));
+                            debug!("{k} = {val} - {coltype:#?}");
+                            match coltype {
                                 QueryableType::String => separated.push_bind_unseparated(val),
                                 QueryableType::Integer => separated.push_bind_unseparated(
                                     val.parse::<i64>().map_err(|_| Error::QueryParams)?,
@@ -347,24 +495,51 @@ impl CollectionSource for PgCollectionSource {
                 return Err(Error::QueryParams);
             }
         }
-        let limit = filter.limit_or_default();
-        if limit > 0 {
-            builder.push(" LIMIT ");
-            debug!("LIMIT {limit}");
-            builder.push_bind(limit as i64);
+
+        if let Some(ord) = &self.ordering_column {
+            builder.push(format!(" ORDER BY {ord}"));
         }
-        if let Some(offset) = filter.offset {
-            builder.push(" OFFSET ");
-            debug!("OFFSET {offset}");
-            builder.push_bind(offset as i64);
+
+        if let Some(max) = self.max_results {
+            if limit > max {
+                limit = max;
+            }
+            builder.push(format!(" LIMIT {limit}"));
+            if offset.is_some() {
+                builder.push(format!(" OFFSET {}", offset.unwrap()));
+            }
         }
+        builder.push(") ");
+        let inner_sql = builder.sql();
+        debug!("Inner SQL: {inner_sql}");
+        let geometry_field = &self.geometry_field;
+        let select_sql = if let Some(pk) = &self.pk_column {
+            format!(
+                r#"SELECT to_jsonb(t.*)-'{geometry_field}'-'{pk}' AS properties, ST_AsGeoJSON({geometry_field})::jsonb AS geometry, st_envelope({geometry_field}::geometry) as bbox,
+                    "{pk}"::varchar AS pk,
+                      count(*) OVER () AS __total_cnt
+                   FROM query t"#,
+            )
+        } else {
+            format!(
+                r#"SELECT to_jsonb(t.*)-'{geometry_field}' AS properties, ST_AsGeoJSON({geometry_field})::jsonb AS geometry, st_envelope({geometry_field}::geometry) as bbox,
+                      NULL AS pk,
+                      --row_number() OVER () ::varchar AS pk,
+                      count(*) OVER () AS __total_cnt
+               FROM query t"#,
+            )
+        };
+        builder.push(&select_sql);
         debug!("SQL: {}", builder.sql());
         let query = builder.build();
         let rows = query.fetch_all(&self.ds.pool).await?;
-        let number_matched = if let Some(row) = rows.first() {
-            row.try_get::<i64, _>("__total_cnt")? as u64
-        } else {
-            0
+        let number_matched = match self.max_results {
+            Some(_m) => None,
+            None => Some(if let Some(row) = rows.first() {
+                row.try_get::<i64, _>("__total_cnt")? as u64
+            } else {
+                0
+            }),
         };
         let number_returned = rows.len() as u64;
         let items = rows
@@ -397,7 +572,7 @@ impl CollectionSource for PgCollectionSource {
                FROM query t
                WHERE {pk}::varchar = '{feature_id}'"#,
             sql = &self.sql,
-            geometry_column = &self.geometry_column,
+            geometry_column = &self.geometry_field,
         );
         if let Some(row) = sqlx::query(&sql)
             // .bind(feature_id)
@@ -464,17 +639,121 @@ fn row_to_feature(row: &PgRow, _table_info: &PgCollectionSource) -> Result<CoreF
     //     "FLOAT8" => json!(row.try_get::<Option<f64>, _>(col.ordinal())?),
     //     ty => json!(format!("<{ty}>")),
     // }
+
+    #[cfg(feature = "stac")]
+    let bbox: geozero::wkb::Decode<geo_types::Geometry<f64>> = row.try_get("bbox")?;
+    #[cfg(feature = "stac")]
+    let bbox = match bbox.geometry {
+        Some(g) => {
+            let polygon: geo_types::Polygon =
+                g.try_into().map_err(|_| Error::GeometryFormatError)?;
+            let exterior = polygon.into_inner().0;
+            let points = exterior.into_points();
+            vec![points[0].x(), points[0].y(), points[2].x(), points[2].y()]
+        }
+        None => vec![],
+    };
+
     let geometry: serde_json::Value = row.try_get("geometry")?;
+
+    #[cfg(feature = "stac")]
+    let bbox: geozero::wkb::Decode<geo_types::Geometry<f64>> = row.try_get("bbox")?;
+    #[cfg(feature = "stac")]
+    let bbox = match bbox.geometry {
+        Some(g) => {
+            let polygon: geo_types::Polygon =
+                g.try_into().map_err(|_| Error::GeometryFormatError)?;
+            let exterior = polygon.into_inner().0;
+            let points = exterior.into_points();
+            vec![points[0].x(), points[0].y(), points[2].x(), points[2].y()]
+        }
+        None => vec![],
+    };
+
     // ERROR:  lwgeom_to_geojson: 'CurvePolygon' geometry type not supported
+
+    #[cfg(feature = "stac")]
+    let assets: HashMap<String, STACAsset> = colsrc
+        .stac_asset_mappings
+        .iter()
+        .map(|(k, v)| {
+            (
+                k.to_owned(),
+                STACAsset {
+                    href: properties[k].as_str().unwrap_or("Missing").to_string(),
+                    title: v.title.clone(),
+                    description: v.description.clone(),
+                    roles: v.roles.clone(),
+                    r#type: v.r#type.clone(),
+                },
+            )
+        })
+        .collect();
+
     let id: Option<String> = row.try_get("pk")?;
 
-    let item = CoreFeature {
+    #[allow(unused_mut)]
+    let mut item = CoreFeature {
         type_: "Feature".to_string(),
         id,
         geometry,
         properties: Some(properties),
         links: vec![],
+        #[cfg(feature = "stac")]
+        stac_version: "1.0.0".to_string(),
+        #[cfg(feature = "stac")]
+        assets,
+        #[cfg(feature = "stac")]
+        collection: colsrc.collection.clone(),
+        #[cfg(feature = "stac")]
+        bbox,
     };
+    #[cfg(feature = "stac")]
+    {
+        let url = PUBLIC_SERVER_URL.get().unwrap();
+        let collection_id = &colsrc.collection;
+        item.links = vec![
+            ApiLink {
+                href: url.to_string(),
+                rel: Some("root".to_string()),
+                type_: Some("application/geo+json".to_string()),
+                title: Some("The landing page of this server as JSON".to_string()),
+                hreflang: None,
+                length: None,
+                method: None,
+            },
+            ApiLink {
+                href: format!(
+                    "{url}/collections/{collection_id}/items/{}",
+                    id.clone().unwrap_or_default()
+                ),
+                rel: Some("self".to_string()),
+                type_: Some("application/geo+json".to_string()),
+                title: Some("this document".to_string()),
+                hreflang: None,
+                length: None,
+                method: None,
+            },
+            ApiLink {
+                href: format!("{url}/collections/{collection_id}"),
+                rel: Some("collection".to_string()),
+                type_: Some("application/geo+json".to_string()),
+                title: Some("the collection document".to_string()),
+                hreflang: None,
+                length: None,
+                method: None,
+            },
+            ApiLink {
+                href: format!("{url}/collections/{collection_id}"),
+                rel: Some("parent".to_string()),
+                type_: Some("application/geo+json".to_string()),
+                title: Some("the collection document".to_string()),
+                hreflang: None,
+                length: None,
+                method: None,
+            },
+        ];
+    }
 
     Ok(item)
 }
@@ -552,8 +831,10 @@ async fn detect_geometry(ds: &PgDatasource, schema: &str, table: &str) -> Result
 }
 
 async fn check_query(ds: &PgDatasource, sql: String) -> Result<String> {
-    debug!("Collection query: {sql}");
-    if let Err(e) = ds.pool.acquire().await?.prepare(&sql).await {
+    let mut limited_sql = sql.clone();
+    limited_sql.push_str(" LIMIT 1");
+    debug!("Collection query: {limited_sql}");
+    if let Err(e) = ds.pool.acquire().await?.prepare(&limited_sql).await {
         error!("Error in collection query `{sql}`: {e}");
         return Err(e.into());
     }
@@ -563,20 +844,23 @@ async fn check_query(ds: &PgDatasource, sql: String) -> Result<String> {
 async fn get_column_info(
     ds: &PgDatasource,
     sql: &str,
-    cols: Option<&Vec<String>>,
-) -> Result<HashMap<String, PgTypeInfo>> {
-    match ds.pool.acquire().await?.prepare(sql).await {
+    colmap: &HashMap<String, String>,
+) -> Result<HashMap<String, (String, PgTypeInfo)>> {
+    let mut limited_sql = sql.to_string();
+    limited_sql.push_str(" LIMIT 1");
+    match ds.pool.acquire().await?.prepare(&limited_sql).await {
         Ok(res) => {
-            let mut hm = HashMap::new();
+            let mut tmphm = HashMap::new();
             for col in res.columns() {
                 let colname = col.name().to_string();
-                if let Some(filter_cols) = cols {
-                    if !filter_cols.contains(&colname) {
-                        continue;
-                    }
+                let type_info = col.type_info().clone();
+                tmphm.insert(colname, type_info);
+            }
+            let mut hm = HashMap::new();
+            for (k, v) in colmap {
+                if let Some(t) = tmphm.remove(k) {
+                    hm.insert(k.clone(), (v.clone(), t));
                 }
-                let type_info = col.type_info();
-                hm.insert(colname, type_info.clone());
             }
             Ok(hm)
         }
@@ -635,6 +919,7 @@ mod tests {
     async fn pg_bbox_filter() {
         let filter = FilterParams {
             limit: Some(50),
+            offset: None,
             bbox: Some("633510.0904,5762740.4365,1220546.4677,6051366.6553".to_string()),
             // WGS84: 5.690918,45.890008,10.964355,47.665387
             ..Default::default()
