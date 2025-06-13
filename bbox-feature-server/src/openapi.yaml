@@ -22,40 +22,38 @@ info:
 servers:
   - url: "http://bbox:8080/"
     description: Production server
-  - url: "http://host.docker.internal:8080/"
-    description: Development server
 tags:
   - name: Features
     description: OGC API Features
 paths:
-  # /:
-  #   get:
-  #     tags:
-  #       - Capabilities
-  #     summary: landing page
-  #     description: |-
-  #       The landing page provides links to the API definition, the conformance
-  #       statements and to the feature collections in this dataset.
-  #     operationId: getLandingPage
-  #     responses:
-  #       '200':
-  #         $ref: '#/components/responses/LandingPage'
-  #       '500':
-  #         $ref: '#/components/responses/ServerError'
-  # /conformance:
-  #   get:
-  #     tags:
-  #       - Capabilities
-  #     summary: information about specifications that this API conforms to
-  #     description: |-
-  #       A list of all conformance classes specified in a standard that the
-  #       server conforms to.
-  #     operationId: getConformanceDeclaration
-  #     responses:
-  #       '200':
-  #         $ref: '#/components/responses/ConformanceDeclaration'
-  #       '500':
-  #         $ref: '#/components/responses/ServerError'
+  /:
+    get:
+      tags:
+        - Capabilities
+      summary: landing page
+      description: |-
+        The landing page provides links to the API definition, the conformance
+        statements and to the feature collections in this dataset.
+      operationId: getLandingPage
+      responses:
+        '200':
+          $ref: '#/components/responses/LandingPage'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /conformance:
+    get:
+      tags:
+        - Capabilities
+      summary: information about specifications that this API conforms to
+      description: |-
+        A list of all conformance classes specified in a standard that the
+        server conforms to.
+      operationId: getConformanceDeclaration
+      responses:
+        '200':
+          $ref: '#/components/responses/ConformanceDeclaration'
+        '500':
+          $ref: '#/components/responses/ServerError'
   /collections:
     get:
       tags:
