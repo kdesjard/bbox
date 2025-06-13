@@ -19,6 +19,7 @@ async fn collections(
     inventory: web::Data<Inventory>,
     req: HttpRequest,
 ) -> Result<HttpResponse, Error> {
+    let url = inventory.base_url();
     let collections = CoreCollections {
         #[cfg(feature = "stac")]
         r#type: "Catalog".to_string(),
@@ -211,51 +212,9 @@ async fn features(
     req: HttpRequest,
     collection_id: web::Path<String>,
 ) -> Result<HttpResponse, Error> {
+    let fp = parse_query_params(&req)?;
     if let Some(collection) = inventory.core_collection(&collection_id) {
-        let mut filters: HashMap<String, String> =
-            match serde_urlencoded::from_str::<Vec<(String, String)>>(req.query_string()) {
-                Ok(f) => f
-                    .iter()
-                    .map(|k| (k.0.to_lowercase(), k.1.to_owned()))
-                    .collect(),
-                Err(_e) => return Ok(HttpResponse::BadRequest().finish()),
-            };
-
-        let bbox = filters.remove("bbox");
-        let datetime = filters.remove("datetime");
-
-        let offset = if let Some(offset_str) = filters.get("offset") {
-            match offset_str.parse::<u32>() {
-                Ok(o) => {
-                    filters.remove("offset");
-                    Some(o)
-                }
-                Err(_e) => return Ok(HttpResponse::BadRequest().finish()),
-            }
-        } else {
-            None
-        };
-        let limit = if let Some(limit_str) = filters.get("limit") {
-            match limit_str.parse::<u32>() {
-                Ok(o) => {
-                    filters.remove("limit");
-                    Some(o)
-                }
-                Err(_e) => return Ok(HttpResponse::BadRequest().finish()),
-            }
-        } else {
-            None
-        };
-
-        let fp = FilterParams {
-            offset,
-            limit,
-            bbox,
-            datetime,
-            filters,
-        };
-
-        if let Some(features) = inventory.collection_items(&collection_id, &fp).await {
+        if let Ok(Some(features)) = inventory.collection_items(&collection_id, &fp).await {
             if html_accepted(&req).await {
                 render_endpoint(
                     &TEMPLATES,
@@ -362,7 +321,7 @@ async fn catalog(
     req: HttpRequest,
 ) -> Result<HttpResponse, Error> {
     let catalog_cfg = inventory.catalog();
-    let url = PUBLIC_SERVER_URL.get().unwrap();
+    let url = inventory.base_url();
     let mut collection_links: Vec<ApiLink> = catalog_cfg
         .collections
         .iter()

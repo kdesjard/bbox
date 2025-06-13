@@ -327,9 +327,11 @@ fn row_to_feature(row: &SqliteRow, table_info: &GpkgCollectionSource) -> Result<
         #[cfg(feature = "stac")]
         stac_version: "1.0.0".to_string(),
         #[cfg(feature = "stac")]
-        stac_type: STACType::Collection,
+        assets: HashMap::new(),
         #[cfg(feature = "stac")]
-        license: cfg.license.clone(),
+        collection: table_info.collection.clone(),
+        #[cfg(feature = "stac")]
+        bbox: vec![],
     };
 
     Ok(item)

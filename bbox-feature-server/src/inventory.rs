@@ -204,7 +204,7 @@ impl Inventory {
                 },
             ],
             time_stamp: None, // time when the response was generated
-            number_matched: Some(items.number_matched),
+            number_matched: items.number_matched,
             number_returned: Some(items.number_returned),
             features: items.features,
         };
@@ -274,6 +274,11 @@ impl Inventory {
                 None
             }
         }
+    }
+
+    /// Return all collections as vector
+    pub fn catalog(&self) -> STACCatalogCfg {
+        self.catalog.clone()
     }
 }
 

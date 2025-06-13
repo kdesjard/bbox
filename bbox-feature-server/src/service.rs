@@ -140,7 +140,7 @@ impl OgcApiService for FeatureService {
         #[cfg(feature = "stac")]
         for collection in self.inventory.collections() {
             links.push(ApiLink {
-                href: format!("{url}/collections/{}", collection.id),
+                href: format!("{api_base}/collections/{}", collection.id),
                 rel: Some("child".to_string()),
                 type_: Some("application/geo+json".to_string()),
                 title: Some(collection.id),

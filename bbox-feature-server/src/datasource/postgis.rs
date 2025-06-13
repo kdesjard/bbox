@@ -121,6 +121,7 @@ impl CollectionDatasource for PgDatasource {
 
         let source = PgCollectionSource {
             ds: self.clone(),
+            base_url: base_url.to_string(),
             sql,
             geometry_field: srccfg
                 .geometry_field
@@ -161,7 +162,6 @@ impl CollectionDatasource for PgDatasource {
             ),
             None => None,
         };
-        let url = PUBLIC_SERVER_URL.get().unwrap();
 
         let mut collection = CoreCollection {
             id: id.clone(),
@@ -181,7 +181,7 @@ impl CollectionDatasource for PgDatasource {
             crs: vec![],
             links: vec![
                 ApiLink {
-                    href: url.to_string(),
+                    href: base_url.to_string(),
                     rel: Some("root".to_string()),
                     type_: Some("application/geo+json".to_string()),
                     title: Some("The landing page of this server as JSON".to_string()),
@@ -192,9 +192,9 @@ impl CollectionDatasource for PgDatasource {
                 },
                 ApiLink {
                     #[cfg(feature = "stac")]
-                    href: format!("{url}/catalog"),
+                    href: format!("{base_url}/catalog"),
                     #[cfg(not(feature = "stac"))]
-                    href: format!("{url}/collections"),
+                    href: format!("{base_url}/collections"),
                     rel: Some("parent".to_string()),
                     type_: Some("application/geo+json".to_string()),
                     title: Some("This document as JSON".to_string()),
@@ -204,7 +204,7 @@ impl CollectionDatasource for PgDatasource {
                     method: None,
                 },
                 ApiLink {
-                    href: format!("{url}/collections/{id}"),
+                    href: format!("{base_url}/collections/{id}"),
                     rel: Some("self".to_string()),
                     type_: Some("application/geo+json".to_string()),
                     title: Some("This document as JSON".to_string()),
@@ -214,7 +214,7 @@ impl CollectionDatasource for PgDatasource {
                     method: None,
                 },
                 ApiLink {
-                    href: format!("{url}/collections/{id}/items"),
+                    href: format!("{base_url}/collections/{id}/items"),
                     rel: Some("items".to_string()),
                     type_: Some("application/geo+json".to_string()),
                     title: Some(id.clone()),
@@ -234,7 +234,7 @@ impl CollectionDatasource for PgDatasource {
 
         if queryable_field_map.keys().len() > 0 {
             collection.links.push(ApiLink {
-                href: format!("{url}/collections/{id}/queryables"),
+                href: format!("{base_url}/collections/{id}/queryables"),
                 rel: Some("http://www.opengis.net/def/rel/ogc/1.0/queryables".to_string()),
                 type_: Some("application/schema+json".to_string()),
                 title: Some(id.clone()),
@@ -290,6 +290,7 @@ impl AutoscanCollectionDatasource for PgDatasource {
 #[derive(Clone, Debug)]
 pub struct PgCollectionSource {
     ds: PgDatasource,
+    base_url: String,
     sql: String,
     geometry_field: String,
     geometry_column: String,
@@ -299,7 +300,7 @@ pub struct PgCollectionSource {
     temporal_end_column: Option<String>,
     ordering_column: Option<String>,
     /// Queriable columns.
-    other_columns: HashMap<String, QueryableType>,
+    other_columns: HashMap<String, (String, QueryableType)>,
     field_map: HashMap<String, String>,
     max_results: Option<u64>,
     #[cfg(feature = "stac")]
@@ -588,6 +589,8 @@ impl CollectionSource for PgCollectionSource {
                     title: Some("this document".to_string()),
                     hreflang: None,
                     length: None,
+                    #[cfg(feature = "stac")]
+                    method: None,
                 },
                 ApiLink {
                     href: format!("{base_url}/collections/{collection_id}"),
@@ -596,6 +599,8 @@ impl CollectionSource for PgCollectionSource {
                     title: Some("the collection document".to_string()),
                     hreflang: None,
                     length: None,
+                    #[cfg(feature = "stac")]
+                    method: None,
                 },
             ];
             Ok(Some(item))
@@ -613,7 +618,7 @@ impl CollectionSource for PgCollectionSource {
                     title.clone(),
                     QueryableProperty {
                         title: Some(title),
-                        type_: Some(s.1.clone()),
+                        type_: Some(s.1 .1.clone()),
                         format: None,
                     },
                 )
@@ -629,7 +634,7 @@ impl CollectionSource for PgCollectionSource {
     }
 }
 
-fn row_to_feature(row: &PgRow, _table_info: &PgCollectionSource) -> Result<CoreFeature> {
+fn row_to_feature(row: &PgRow, colsrc: &PgCollectionSource) -> Result<CoreFeature> {
     let properties: serde_json::Value = row.try_get("properties")?;
     // properties[col.name()] = match col.type_info().name() {
     //     "VARCHAR"|"TEXT" => json!(row.try_get::<Option<&str>, _>(col.ordinal())?),
@@ -640,26 +645,12 @@ fn row_to_feature(row: &PgRow, _table_info: &PgCollectionSource) -> Result<CoreF
     //     ty => json!(format!("<{ty}>")),
     // }
 
-    #[cfg(feature = "stac")]
-    let bbox: geozero::wkb::Decode<geo_types::Geometry<f64>> = row.try_get("bbox")?;
-    #[cfg(feature = "stac")]
-    let bbox = match bbox.geometry {
-        Some(g) => {
-            let polygon: geo_types::Polygon =
-                g.try_into().map_err(|_| Error::GeometryFormatError)?;
-            let exterior = polygon.into_inner().0;
-            let points = exterior.into_points();
-            vec![points[0].x(), points[0].y(), points[2].x(), points[2].y()]
-        }
-        None => vec![],
-    };
-
     let geometry: serde_json::Value = row.try_get("geometry")?;
 
     #[cfg(feature = "stac")]
-    let bbox: geozero::wkb::Decode<geo_types::Geometry<f64>> = row.try_get("bbox")?;
+    let bbox_from_db: geozero::wkb::Decode<geo_types::Geometry<f64>> = row.try_get("bbox")?;
     #[cfg(feature = "stac")]
-    let bbox = match bbox.geometry {
+    let bbox = match bbox_from_db.geometry {
         Some(g) => {
             let polygon: geo_types::Polygon =
                 g.try_into().map_err(|_| Error::GeometryFormatError)?;
@@ -695,7 +686,7 @@ fn row_to_feature(row: &PgRow, _table_info: &PgCollectionSource) -> Result<CoreF
     #[allow(unused_mut)]
     let mut item = CoreFeature {
         type_: "Feature".to_string(),
-        id,
+        id: id.clone(),
         geometry,
         properties: Some(properties),
         links: vec![],
@@ -710,11 +701,11 @@ fn row_to_feature(row: &PgRow, _table_info: &PgCollectionSource) -> Result<CoreF
     };
     #[cfg(feature = "stac")]
     {
-        let url = PUBLIC_SERVER_URL.get().unwrap();
+        let url = &colsrc.base_url;
         let collection_id = &colsrc.collection;
         item.links = vec![
             ApiLink {
-                href: url.to_string(),
+                href: url.clone(),
                 rel: Some("root".to_string()),
                 type_: Some("application/geo+json".to_string()),
                 title: Some("The landing page of this server as JSON".to_string()),
