@@ -130,7 +130,9 @@ async fn openapi_json(
     req: HttpRequest,
 ) -> HttpResponse {
     let json = openapi.as_json(&cfg.public_server_url(req));
-    HttpResponse::Ok().json(json)
+    HttpResponse::Ok()
+        .content_type("application/vnd.oai.openapi+json;version=3.0")
+        .json(json)
 }
 
 async fn health() -> HttpResponse {
