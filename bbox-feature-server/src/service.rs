@@ -54,6 +54,7 @@ impl OgcApiService for FeatureService {
                 "https://api.stacspec.org/v1.0.0/core".to_string(),
                 "https://api.stacspec.org/v1.0.0/ogcapi-features".to_string(),
                 "https://api.stacspec.org/v1.0.0/item-search".to_string(),
+                "https://api.stacspec.org/v1.0.0/browseable".to_string(),
             ]);
         }
         classes
@@ -107,8 +108,7 @@ impl OgcApiService for FeatureService {
             ApiLink {
                 href: format!("{api_base}/openapi.json"),
                 rel: Some("service-desc".to_string()),
-                type_: Some("application/json".to_string()),
-                //type_: Some("application/vnd.oai.openapi+json;version=3.0".to_string()),
+                type_: Some("application/vnd.oai.openapi+json;version=3.0".to_string()),
                 title: Some("the API definition".to_string()),
                 hreflang: None,
                 length: None,
