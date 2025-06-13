@@ -38,6 +38,9 @@ impl OgcApiService for FeatureService {
     }
     fn conformance_classes(&self) -> Vec<String> {
         let mut classes = vec![
+            "http://www.opengis.net/spec/ogcapi-common-1/1.0/conf/core".to_string(),
+            "http://www.opengis.net/spec/ogcapi-common-1/1.0/conf/json".to_string(),
+            "http://www.opengis.net/spec/ogcapi-common-1/1.0/conf/landing-page".to_string(),
             "http://www.opengis.net/spec/ogcapi-common-2/1.0/conf/collections".to_string(),
             "http://www.opengis.net/spec/ogcapi-features-1/1.0/conf/core".to_string(),
             "http://www.opengis.net/spec/ogcapi-features-1/1.0/conf/geojson".to_string(),
