@@ -150,7 +150,7 @@ async fn search(inventory: web::Data<Inventory>, req: HttpRequest) -> Result<Htt
 
 fn parse_query_params(req: &HttpRequest) -> Result<FilterParams, Box<dyn StdError>> {
     let Ok(pairs) = serde_urlencoded::from_str::<Vec<(String, String)>>(req.query_string()) else {
-        return Err("Bad".into());
+        return Err("Unable to extract query pairs".into());
     };
     let mut filters: HashMap<String, String> = pairs
         .iter()
