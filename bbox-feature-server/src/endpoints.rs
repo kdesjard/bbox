@@ -19,7 +19,8 @@ async fn collections(
     inventory: web::Data<Inventory>,
     req: HttpRequest,
 ) -> Result<HttpResponse, Error> {
-    let url = inventory.base_url();
+    let url = inventory.href_prefix();
+    println!("{url}");
     let collections = CoreCollections {
         #[cfg(feature = "stac")]
         r#type: "Catalog".to_string(),
@@ -321,7 +322,7 @@ async fn catalog(
     req: HttpRequest,
 ) -> Result<HttpResponse, Error> {
     let catalog_cfg = inventory.catalog();
-    let url = inventory.base_url();
+    let url = inventory.href_prefix();
     let mut collection_links: Vec<ApiLink> = catalog_cfg
         .collections
         .iter()

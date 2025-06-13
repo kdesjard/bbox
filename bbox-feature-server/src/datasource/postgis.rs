@@ -557,7 +557,7 @@ impl CollectionSource for PgCollectionSource {
 
     async fn item(
         &self,
-        base_url: &str,
+        _base_url: &str,
         collection_id: &str,
         feature_id: &str,
     ) -> Result<Option<CoreFeature>> {
@@ -568,7 +568,7 @@ impl CollectionSource for PgCollectionSource {
         let sql = format!(
             r#"
             WITH query AS ({sql})
-            SELECT to_jsonb(t.*)-'{geometry_column}'-'{pk}' AS properties, ST_AsGeoJSON({geometry_column})::jsonb AS geometry,
+            SELECT to_jsonb(t.*)-'{geometry_column}'-'{pk}' AS properties, ST_AsGeoJSON({geometry_column})::jsonb AS geometry, st_envelope({geometry_column}::geometry) as bbox,
                 "{pk}"::varchar AS pk
                FROM query t
                WHERE {pk}::varchar = '{feature_id}'"#,
@@ -580,29 +580,7 @@ impl CollectionSource for PgCollectionSource {
             .fetch_optional(&self.ds.pool)
             .await?
         {
-            let mut item = row_to_feature(&row, self)?;
-            item.links = vec![
-                ApiLink {
-                    href: format!("{base_url}/collections/{collection_id}/items/{feature_id}",),
-                    rel: Some("self".to_string()),
-                    type_: Some("application/geo+json".to_string()),
-                    title: Some("this document".to_string()),
-                    hreflang: None,
-                    length: None,
-                    #[cfg(feature = "stac")]
-                    method: None,
-                },
-                ApiLink {
-                    href: format!("{base_url}/collections/{collection_id}"),
-                    rel: Some("collection".to_string()),
-                    type_: Some("application/geo+json".to_string()),
-                    title: Some("the collection document".to_string()),
-                    hreflang: None,
-                    length: None,
-                    #[cfg(feature = "stac")]
-                    method: None,
-                },
-            ];
+            let item = row_to_feature(&row, self)?;
             Ok(Some(item))
         } else {
             Ok(None)
