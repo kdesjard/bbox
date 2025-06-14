@@ -1,4 +1,4 @@
-use chrono::DateTime;
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -153,7 +153,7 @@ pub struct CoreFeatures {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub links: Vec<ApiLink>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub time_stamp: Option<String>,
+    pub time_stamp: Option<DateTime<Utc>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub number_matched: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
