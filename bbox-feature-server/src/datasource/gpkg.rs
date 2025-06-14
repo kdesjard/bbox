@@ -5,11 +5,11 @@ use crate::datasource::{
     AutoscanCollectionDatasource, CollectionDatasource, CollectionSource, CollectionSourceCfg,
     ConfiguredCollectionCfg, ItemsResult,
 };
-use crate::error::{self, Error, Result};
 use crate::filter_params::FilterParams;
 use crate::inventory::FeatureCollection;
 use async_trait::async_trait;
 use bbox_core::config::DsGpkgCfg;
+use bbox_core::error::{self, Error, Result};
 use bbox_core::ogcapi::*;
 use futures::TryStreamExt;
 use geozero::{geojson, wkb};

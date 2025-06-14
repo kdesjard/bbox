@@ -7,10 +7,10 @@ use crate::datasource::{
     AutoscanCollectionDatasource, CollectionDatasource, CollectionSource, CollectionSourceCfg,
     ConfiguredCollectionCfg, ItemsResult,
 };
-use crate::error::{Error, Result};
 use crate::filter_params::{FilterParams, TemporalType};
 use crate::inventory::FeatureCollection;
 use async_trait::async_trait;
+use bbox_core::error::{Error, Result};
 use bbox_core::ogcapi::*;
 use bbox_core::pg_ds::PgDatasource;
 use chrono::DateTime;
@@ -290,6 +290,7 @@ impl AutoscanCollectionDatasource for PgDatasource {
 #[derive(Clone, Debug)]
 pub struct PgCollectionSource {
     ds: PgDatasource,
+    #[allow(dead_code)]
     base_url: String,
     sql: String,
     geometry_field: String,
@@ -612,6 +613,7 @@ impl CollectionSource for PgCollectionSource {
     }
 }
 
+#[allow(unused_variables)]
 fn row_to_feature(row: &PgRow, colsrc: &PgCollectionSource) -> Result<CoreFeature> {
     let properties: serde_json::Value = row.try_get("properties")?;
     // properties[col.name()] = match col.type_info().name() {

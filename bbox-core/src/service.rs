@@ -2,6 +2,7 @@ use crate::api::{OgcApiInventory, OpenApiDoc};
 use crate::auth::oidc::OidcClient;
 use crate::cli::{CliArgs, CommonCommands, GlobalArgs, NoArgs, NoCommands};
 use crate::config::{ConfigError, CoreServiceCfg, WebserverCfg};
+use crate::httperror::http_error_handler;
 use crate::logger;
 use crate::metrics::{init_metrics_exporter, no_metrics, NoMetrics};
 use crate::ogcapi::{ApiLink, CoreCollection, CoreExtent, CoreExtentSpatial, CoreExtentTemporal};
@@ -12,7 +13,7 @@ use actix_web::{
     cookie::{time::Duration, Key},
     http::Uri,
     middleware,
-    middleware::Condition,
+    middleware::{Condition, ErrorHandlers},
     web, App, HttpServer,
 };
 use actix_web_opentelemetry::{RequestMetrics, RequestMetricsBuilder, RequestTracing};
@@ -308,6 +309,7 @@ pub async fn run_service<T: OgcApiService + ServiceEndpoints + Sync + 'static>(
             web::scope(&api_scope)
                 .configure(|cfg| core.register_endpoints(cfg))
                 .configure(|cfg| service.register_endpoints(cfg))
+                .wrap(ErrorHandlers::new().default_handler(http_error_handler))
                 .wrap(
                     SessionMiddleware::builder(CookieSessionStore::default(), secret_key.clone())
                         .cookie_name("bbox".to_owned())

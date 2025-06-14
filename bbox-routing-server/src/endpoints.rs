@@ -1,7 +1,7 @@
 use crate::engine::Router;
-use crate::error;
 use crate::service::RoutingService;
 use actix_web::{web, HttpResponse};
+use bbox_core::error;
 use bbox_core::service::ServiceEndpoints;
 use log::info;
 use serde::{Deserialize, Serialize};

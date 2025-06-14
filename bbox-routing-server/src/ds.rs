@@ -1,7 +1,7 @@
 use crate::config::RoutingCfg;
 use crate::engine::{NodeIndex, DEFAULT_SEARCH_DISTANCE};
-use crate::error::Result;
 use async_trait::async_trait;
+use bbox_core::error::Result;
 use bbox_core::pg_ds::PgDatasource;
 use fast_paths::InputGraph;
 use futures::TryStreamExt;

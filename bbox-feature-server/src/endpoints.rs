@@ -8,6 +8,7 @@ use bbox_core::ogcapi::{ApiLink, CoreCollections};
 use bbox_core::ogcapi::{CoreFeature, CoreFeatures, STACCatalog};
 use bbox_core::service::ServiceEndpoints;
 use bbox_core::templates::{create_env_embedded, html_accepted, render_endpoint};
+#[cfg(feature = "stac")]
 use chrono::Utc;
 use minijinja::{context, Environment};
 use once_cell::sync::Lazy;

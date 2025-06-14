@@ -1,11 +1,11 @@
 //! Feature source implementations.
 
 use crate::config::{CollectionSourceCfg, ConfiguredCollectionCfg};
-use crate::error::{Error, Result};
 use crate::filter_params::FilterParams;
 use crate::inventory::FeatureCollection;
 use async_trait::async_trait;
 use bbox_core::config::{DatasourceCfg, NamedDatasourceCfg};
+use bbox_core::error::{Error, Result};
 use bbox_core::ogcapi::{CoreExtent, CoreFeature, Queryables};
 use bbox_core::NamedObjectStore;
 use dyn_clone::{clone_trait_object, DynClone};

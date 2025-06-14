@@ -1,6 +1,6 @@
 use crate::config::RoutingCfg;
 use crate::ds::{ds_from_config, RouterDs};
-use crate::error::{self, Result};
+use bbox_core::error::{self, Result};
 use fast_paths::{FastGraph, ShortestPath};
 use log::info;
 use rstar::primitives::GeomWithData;
