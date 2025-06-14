@@ -8,6 +8,7 @@ use bbox_core::ogcapi::{ApiLink, CoreCollections};
 use bbox_core::ogcapi::{CoreFeature, CoreFeatures, STACCatalog};
 use bbox_core::service::ServiceEndpoints;
 use bbox_core::templates::{create_env_embedded, html_accepted, render_endpoint};
+use chrono::Utc;
 use minijinja::{context, Environment};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
@@ -140,7 +141,7 @@ async fn search(inventory: web::Data<Inventory>, req: HttpRequest) -> Result<Htt
         links: vec![],
         number_matched: Some(features.len() as u64),
         number_returned: Some(features.len() as u64),
-        time_stamp: None,
+        time_stamp: Some(Utc::now()),
         features,
     };
     Ok(HttpResponse::Ok()
