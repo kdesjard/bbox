@@ -334,13 +334,15 @@ impl CollectionSource for PgCollectionSource {
                 } else {
                     builder.push(" WHERE ");
                 }
-                builder.push(format!(" ( {geometry_column} && ST_MakeEnvelope("));
+                builder.push(format!(
+                    " ( ST_Intersects({geometry_column}, ST_MakeEnvelope("
+                ));
                 let mut separated = builder.separated(",");
                 separated.push_bind(bbox[0]);
                 separated.push_bind(bbox[1]);
                 separated.push_bind(bbox[2]);
                 separated.push_bind(bbox[3]);
-                builder.push(") ) ");
+                builder.push(",4326) ) ) ");
                 where_term = true;
             }
             Ok(None) => {}
