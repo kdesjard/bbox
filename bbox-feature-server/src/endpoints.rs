@@ -1,8 +1,9 @@
 use crate::filter_params::FilterParams;
 use crate::inventory::Inventory;
 use crate::service::FeatureService;
-use actix_web::{web, Error, HttpRequest, HttpResponse};
+use actix_web::{web, HttpRequest, HttpResponse};
 use bbox_core::api::OgcApiInventory;
+use bbox_core::error::Error;
 use bbox_core::ogcapi::{ApiLink, CoreCollections};
 #[cfg(feature = "stac")]
 use bbox_core::ogcapi::{CoreFeature, CoreFeatures, STACCatalog};
@@ -13,7 +14,6 @@ use chrono::Utc;
 use minijinja::{context, Environment};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
-use std::error::Error as StdError;
 
 /// the feature collections in the dataset
 async fn collections(
@@ -58,6 +58,7 @@ async fn collections(
             context!(cur_menu=>"Collections", base_url => inventory.base_url(), collections => &collections),
         )
         .await
+        .map_err(|_| Error::HtmlTemplate)
     } else {
         Ok(HttpResponse::Ok().json(collections))
     }
@@ -77,6 +78,7 @@ async fn collection(
                 context!(cur_menu=>"Collections", base_url => inventory.base_url(), collection => &collection),
             )
             .await
+        .map_err(|_| Error::HtmlTemplate)
         } else {
             Ok(HttpResponse::Ok().json(collection))
         }
@@ -99,6 +101,7 @@ async fn queryables(
                 context!(cur_menu=>"Collections", base_url => inventory.base_url(), queryables => &queryables),
             )
             .await
+        .map_err(|_| Error::HtmlTemplate)
         } else {
             Ok(HttpResponse::Ok()
                 .content_type("application/geo+json")
@@ -150,9 +153,10 @@ async fn search(inventory: web::Data<Inventory>, req: HttpRequest) -> Result<Htt
         .json(feature))
 }
 
-fn parse_query_params(req: &HttpRequest) -> Result<FilterParams, Box<dyn StdError>> {
+fn parse_query_params(req: &HttpRequest) -> Result<FilterParams, Error> {
     let Ok(pairs) = serde_urlencoded::from_str::<Vec<(String, String)>>(req.query_string()) else {
-        return Err("Unable to extract query pairs".into());
+        log::error!("Unable to extract query pairs");
+        return Err(Error::QueryParams);
     };
     let mut filters: HashMap<String, String> = pairs
         .iter()
@@ -171,7 +175,8 @@ fn parse_query_params(req: &HttpRequest) -> Result<FilterParams, Box<dyn StdErro
     let ids = filters.remove("ids");
     let intersects = filters.remove("intersects");
     if bbox.is_some() && intersects.is_some() {
-        return Err("bbox and intersects are mutually exclusive options".into());
+        log::error!("bbox and intersects are mutually exclusive options");
+        return Err(Error::QueryParams);
     }
 
     let offset = if let Some(offset_str) = filters.get("offset") {
@@ -180,7 +185,10 @@ fn parse_query_params(req: &HttpRequest) -> Result<FilterParams, Box<dyn StdErro
                 filters.remove("offset");
                 Some(o)
             }
-            Err(e) => return Err(Box::new(e)),
+            Err(e) => {
+                log::error!("{e}");
+                return Err(Error::QueryParams);
+            }
         }
     } else {
         None
@@ -191,7 +199,10 @@ fn parse_query_params(req: &HttpRequest) -> Result<FilterParams, Box<dyn StdErro
                 filters.remove("limit");
                 Some(o)
             }
-            Err(e) => return Err(Box::new(e)),
+            Err(e) => {
+                log::error!("{e}");
+                return Err(Error::QueryParams);
+            }
         }
     } else {
         None
@@ -216,24 +227,21 @@ async fn features(
     collection_id: web::Path<String>,
 ) -> Result<HttpResponse, Error> {
     let fp = parse_query_params(&req)?;
-    if let Some(collection) = inventory.core_collection(&collection_id) {
-        if let Ok(Some(features)) = inventory.collection_items(&collection_id, &fp).await {
-            if html_accepted(&req).await {
-                render_endpoint(
+    let Some(collection) = inventory.core_collection(&collection_id) else {
+        return Err(Error::InvalidCollection);
+    };
+    let features = inventory.collection_items(&collection_id, &fp).await?;
+    if html_accepted(&req).await {
+        render_endpoint(
                     &TEMPLATES,
                     "features.html",
                     context!(cur_menu=>"Collections", base_url => inventory.base_url(), collection => &collection, features => &features),
                 ).await
-            } else {
-                Ok(HttpResponse::Ok()
-                    .content_type("application/geo+json")
-                    .json(features))
-            }
-        } else {
-            Ok(HttpResponse::NotFound().finish())
-        }
+        .map_err(|_| Error::HtmlTemplate)
     } else {
-        Ok(HttpResponse::NotFound().finish())
+        Ok(HttpResponse::Ok()
+            .content_type("application/geo+json")
+            .json(features))
     }
 }
 
@@ -255,6 +263,7 @@ async fn feature(
                     "feature.html",
                     context!(cur_menu=>"Collections", base_url => inventory.base_url(), collection => &collection, feature => &feature),
                 ).await
+        .map_err(|_| Error::HtmlTemplate)
             } else {
                 Ok(HttpResponse::Ok()
                     .content_type("application/geo+json")
@@ -386,6 +395,7 @@ async fn catalog(
             context!(cur_menu=>"Catalog", catalog => &catalog),
         )
         .await
+        .map_err(|_| Error::HtmlTemplate)
     } else {
         Ok(HttpResponse::Ok().json(catalog))
     }

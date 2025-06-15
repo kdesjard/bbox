@@ -1,6 +1,7 @@
 use crate::config::{CollectionsCfg, STACCatalogCfg};
 use crate::datasource::{gpkg::SqliteDatasource, AutoscanCollectionDatasource, CollectionSource};
 use crate::filter_params::FilterParams;
+use bbox_core::error::Error;
 use bbox_core::file_search;
 use bbox_core::ogcapi::*;
 use bbox_core::pg_ds::PgDatasource;
@@ -147,16 +148,16 @@ impl Inventory {
         &self,
         collection_id: &str,
         filter: &FilterParams,
-    ) -> Result<Option<CoreFeatures>, Box<dyn std::error::Error>> {
+    ) -> Result<Option<CoreFeatures>, Error> {
         let Some(fc) = self.collection(collection_id) else {
-            warn!("Ignoring error getting collection {collection_id}");
-            return Err("Invalid collection".into());
+            warn!("Invalid collection {collection_id}");
+            return Err(Error::InvalidCollection);
         };
         let items = match fc.source.items(filter).await {
             Ok(items) => items,
             Err(e) => {
                 warn!("Ignoring error getting collection items for {collection_id}: {e}");
-                return Err(Box::new(e));
+                return Err(e);
             }
         };
         let base_url = self.href_prefix();

@@ -14,8 +14,14 @@ pub enum Error {
     // Database errors
     #[error(transparent)]
     DbError(#[from] sqlx::Error),
+    //
     #[error("Query parameters error")]
     QueryParams,
+    #[error("Invalid collection")]
+    InvalidCollection,
+    #[error("HTML Templating")]
+    HtmlTemplate,
+    //
     #[error("No node found")]
     NodeNotFound,
     #[error("No route found")]
@@ -36,8 +42,9 @@ impl ResponseError for Error {
     fn status_code(&self) -> StatusCode {
         match *self {
             Self::QueryParams | Self::GeometryFormatError => StatusCode::BAD_REQUEST,
+            Self::InvalidCollection => StatusCode::NOT_FOUND,
+            Self::HtmlTemplate => StatusCode::INTERNAL_SERVER_ERROR,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
-            //            Self::=> StatusCode::NOT_FOUND,
         }
     }
 }
