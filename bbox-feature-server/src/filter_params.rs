@@ -227,14 +227,11 @@ mod tests {
         .bbox()
         .is_err());
 
-        assert_eq!(
-            FilterParams {
-                bbox: Some("1,2,3".to_string()),
-                ..Default::default()
-            }
-            .bbox()
-            .unwrap(),
-            None // should be Err
-        );
+        assert!(FilterParams {
+            bbox: Some("1,2,3".to_string()),
+            ..Default::default()
+        }
+        .bbox()
+        .is_err(),);
     }
 }
