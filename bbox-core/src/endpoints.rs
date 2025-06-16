@@ -188,7 +188,11 @@ impl ServiceEndpoints for CoreService {
             )
             .service(web::resource("/favicon.ico").route(web::get().to(favicon)))
             .service(web::resource("/openapi.yaml").route(web::get().to(openapi_yaml)))
-            .service(web::resource("/openapi.json").route(web::get().to(openapi_json)))
+            .service(
+                web::resource("/openapi.json")
+                    .guard(JsonContentGuard)
+                    .route(web::get().to(openapi_json)),
+            )
             .service(
                 web::resource("/openapi")
                     .guard(guard::Acceptable::new(
