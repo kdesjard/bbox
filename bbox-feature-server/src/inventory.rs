@@ -187,16 +187,6 @@ impl Inventory {
                 ApiLink {
                     href: format!("{base_url}/collections/{collection_id}/items"),
                     rel: Some("self".to_string()),
-                    type_: Some("text/html".to_string()),
-                    title: Some("this document".to_string()),
-                    hreflang: None,
-                    length: None,
-                    #[cfg(feature = "stac")]
-                    method: None,
-                },
-                ApiLink {
-                    href: format!("{base_url}/collections/{collection_id}/items.json"),
-                    rel: Some("self".to_string()),
                     type_: Some("application/geo+json".to_string()),
                     title: Some("this document".to_string()),
                     hreflang: None,
