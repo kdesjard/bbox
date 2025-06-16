@@ -123,12 +123,11 @@ impl CollectionDatasource for PgDatasource {
             ds: self.clone(),
             base_url: base_url.to_string(),
             sql,
-            geometry_field: srccfg
-                .geometry_field
-                .to_owned()
-                .ok_or(Error::DatasourceSetupError(format!(
+            geometry_column_alias: srccfg.geometry_field.to_owned().ok_or(
+                Error::DatasourceSetupError(format!(
                     "Datasource `{id}`: configuration `geometry_field` missing"
-                )))?,
+                )),
+            )?,
             geometry_column,
             pk_column,
             temporal_column,
@@ -293,7 +292,7 @@ pub struct PgCollectionSource {
     #[allow(dead_code)]
     base_url: String,
     sql: String,
-    geometry_field: String,
+    geometry_column_alias: String,
     geometry_column: String,
     /// Primary key column, None if multi column key.
     pk_column: Option<String>,
@@ -516,17 +515,17 @@ impl CollectionSource for PgCollectionSource {
         builder.push(") ");
         let inner_sql = builder.sql();
         debug!("Inner SQL: {inner_sql}");
-        let geometry_field = &self.geometry_field;
+        let geometry_column_alias = &self.geometry_column_alias;
         let select_sql = if let Some(pk) = &self.pk_column {
             format!(
-                r#"SELECT to_jsonb(t.*)-'{geometry_field}'-'{pk}' AS properties, ST_AsGeoJSON({geometry_field})::jsonb AS geometry, st_envelope({geometry_field}::geometry) as bbox,
+                r#"SELECT to_jsonb(t.*)-'{geometry_column_alias}'-'{pk}' AS properties, ST_AsGeoJSON({geometry_column_alias})::jsonb AS geometry, st_envelope({geometry_column_alias}::geometry) as bbox,
                     "{pk}"::varchar AS pk,
                       count(*) OVER () AS __total_cnt
                    FROM query t"#,
             )
         } else {
             format!(
-                r#"SELECT to_jsonb(t.*)-'{geometry_field}' AS properties, ST_AsGeoJSON({geometry_field})::jsonb AS geometry, st_envelope({geometry_field}::geometry) as bbox,
+                r#"SELECT to_jsonb(t.*)-'{geometry_column_alias}' AS properties, ST_AsGeoJSON({geometry_column_alias})::jsonb AS geometry, st_envelope({geometry_column_alias}::geometry) as bbox,
                       NULL AS pk,
                       --row_number() OVER () ::varchar AS pk,
                       count(*) OVER () AS __total_cnt
@@ -571,13 +570,14 @@ impl CollectionSource for PgCollectionSource {
         let sql = format!(
             r#"
             WITH query AS ({sql})
-            SELECT to_jsonb(t.*)-'{geometry_column}'-'{pk}' AS properties, ST_AsGeoJSON({geometry_column})::jsonb AS geometry, st_envelope({geometry_column}::geometry) as bbox,
+            SELECT to_jsonb(t.*)-'{geometry_column_alias}'-'{pk}' AS properties, ST_AsGeoJSON({geometry_column_alias})::jsonb AS geometry, st_envelope({geometry_column_alias}::geometry) as bbox,
                 "{pk}"::varchar AS pk
                FROM query t
                WHERE {pk}::varchar = '{feature_id}'"#,
             sql = &self.sql,
-            geometry_column = &self.geometry_field,
+            geometry_column_alias = &self.geometry_column_alias,
         );
+        debug!("{sql}");
         if let Some(row) = sqlx::query(&sql)
             // .bind(feature_id)
             .fetch_optional(&self.ds.pool)
@@ -878,10 +878,15 @@ mod tests {
             ds,
             sql: "SELECT * FROM ne_10m_rivers_lake_centerlines".to_string(),
             geometry_column: "wkb_geometry".to_string(),
+            geometry_column_alias: "wkb_geometry".to_string(),
             pk_column: Some("fid".to_string()),
             temporal_column: None,
             temporal_end_column: None,
             other_columns: HashMap::new(),
+            base_url: String::new(),
+            field_map: HashMap::new(),
+            ordering_column: None,
+            max_results: None,
         };
         let items = source.items(&filter).await.unwrap();
         assert_eq!(items.features.len(), filter.limit_or_default() as usize);
@@ -904,10 +909,15 @@ mod tests {
             ds,
             sql: "SELECT * FROM ne_10m_rivers_lake_centerlines".to_string(),
             geometry_column: "wkb_geometry".to_string(),
+            geometry_column_alias: "wkb_geometry".to_string(),
             pk_column: Some("fid".to_string()),
             temporal_column: None,
             temporal_end_column: None,
             other_columns: HashMap::new(),
+            base_url: String::new(),
+            field_map: HashMap::new(),
+            ordering_column: None,
+            max_results: None,
         };
         let items = source.items(&filter).await.unwrap();
         assert_eq!(items.features.len(), 10);
@@ -923,10 +933,15 @@ mod tests {
             ds,
             sql: "SELECT *, '2024-01-01 00:00:00Z'::timestamptz - (fid-1) * INTERVAL '1 day' AS ts FROM ne_10m_rivers_lake_centerlines ORDER BY fid".to_string(),
             geometry_column: "wkb_geometry".to_string(),
+            geometry_column_alias: "wkb_geometry".to_string(),
             pk_column: Some("fid".to_string()),
             temporal_column: Some("ts".to_string()),
             temporal_end_column: None,
             other_columns: HashMap::new(),
+            base_url: String::new(),
+            field_map: HashMap::new(),
+            ordering_column: None,
+            max_results: None,
         };
 
         let filter = FilterParams {
@@ -962,16 +977,24 @@ mod tests {
             .await
             .unwrap();
 
-        let other_columns: HashMap<String, QueryableType> =
-            [("name".to_string(), QueryableType::String)].into();
+        let other_columns: HashMap<String, (String, QueryableType)> = [(
+            "name".to_string(),
+            ("name".to_string(), QueryableType::String),
+        )]
+        .into();
         let source = PgCollectionSource {
             ds,
             sql: "SELECT *, '2024-01-01 00:00:00Z'::timestamptz - (fid-1) * INTERVAL '1 day' AS ts FROM ne_10m_rivers_lake_centerlines".to_string(),
             geometry_column: "wkb_geometry".to_string(),
+            geometry_column_alias: "wkb_geometry".to_string(),
             pk_column: Some("fid".to_string()),
             temporal_column: Some("ts".to_string()),
             temporal_end_column: None,
             other_columns,
+            base_url: String::new(),
+            field_map: HashMap::new(),
+            ordering_column: None,
+            max_results: None,
         };
 
         let filter = FilterParams {
