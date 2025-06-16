@@ -22,7 +22,6 @@ async fn collections(
     req: HttpRequest,
 ) -> Result<HttpResponse, Error> {
     let url = inventory.href_prefix();
-    println!("{url}");
     let collections = CoreCollections {
         #[cfg(feature = "stac")]
         r#type: "Catalog".to_string(),
