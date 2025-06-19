@@ -163,9 +163,17 @@ impl AutoscanCollectionDatasource for PgDatasource {
             SELECT contents.*
             FROM geometry_columns contents
               JOIN spatial_ref_sys refsys ON refsys.srid = contents.srid
-            WHERE f_table_schema = 'public'
+              WHERE f_table_schema in (
         "#;
-        let mut rows = sqlx::query(sql).fetch(&self.pool);
+        let mut builder: QueryBuilder<Postgres> = QueryBuilder::new(sql);
+        let mut separated = builder.separated(",");
+        for schema in &self.schemas {
+            separated.push_bind(schema.clone());
+        }
+        builder.push(")");
+        debug!("SQL: {}", builder.sql());
+        let query = builder.build();
+        let mut rows = query.fetch(&self.pool);
         while let Some(row) = rows.try_next().await? {
             let table_schema: String = row.try_get("f_table_schema")?;
             let table_name: String = row.try_get("f_table_name")?;
