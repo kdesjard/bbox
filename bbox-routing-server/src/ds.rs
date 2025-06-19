@@ -91,7 +91,7 @@ impl RouterDs for PgRouteTablesDs {
         info!("Reading routing graph from {url}");
         let mut index = NodeIndex::new(dist);
         let mut input_graph = InputGraph::new();
-        let db = PgDatasource::new_pool(url).await.unwrap();
+        let db = PgDatasource::new_pool(url, None).await.unwrap();
         let sql = format!(
             r#"
             SELECT e.{node_src} AS src, e.{node_dst} AS dst, e.{cost} AS cost,
