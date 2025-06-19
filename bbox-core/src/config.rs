@@ -282,7 +282,7 @@ pub enum DatasourceCfg {
 #[serde(deny_unknown_fields)]
 pub struct DsPostgisCfg {
     pub url: String,
-    pub search_path: Option<String>,
+    pub search_path: Option<Vec<String>>,
     // pub pool: Option<u16>,
     // pub connection_timeout: Option<u64>,
 }

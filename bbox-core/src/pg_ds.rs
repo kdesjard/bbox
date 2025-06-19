@@ -21,13 +21,14 @@ impl PgDatasource {
     pub async fn from_config(ds: &DsPostgisCfg, envvar: Option<String>) -> Result<Self> {
         Self::new_pool(&envvar.unwrap_or(ds.url.clone()), ds.search_path.clone()).await
     }
-    pub async fn new_pool(url: &str, search_path: Option<String>) -> Result<Self> {
+    pub async fn new_pool(url: &str, search_path: Option<Vec<String>>) -> Result<Self> {
         info!("Connecting to {url}");
         let connect_options = PgConnectOptions::new();
         let schemas = if let Some(sp) = search_path {
-            info!("Setting search_path to {sp}");
-            connect_options.options([("search_path", sp.clone())]);
-            sp.split(',').map(str::to_string).collect()
+            let path = sp.join(",");
+            info!("Setting search_path to {path}");
+            connect_options.options([("search_path", path)]);
+            sp
         } else {
             vec!["public".to_string()]
         };

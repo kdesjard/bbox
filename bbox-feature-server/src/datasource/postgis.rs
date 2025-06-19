@@ -171,7 +171,11 @@ impl AutoscanCollectionDatasource for PgDatasource {
             separated.push_bind(schema.clone());
         }
         builder.push(")");
-        debug!("SQL: {}", builder.sql());
+        debug!(
+            "SQL: {} with placeholders: {:?}",
+            builder.sql(),
+            self.schemas
+        );
         let query = builder.build();
         let mut rows = query.fetch(&self.pool);
         while let Some(row) = rows.try_next().await? {
