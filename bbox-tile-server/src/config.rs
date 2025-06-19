@@ -485,6 +485,7 @@ impl From<t_rex::ApplicationCfg> for TileServiceCfg {
             .map(|ds| {
                 let datasource = DatasourceCfg::Postgis(DsPostgisCfg {
                     url: ds.dbconn.expect("dbconn"),
+                    search_path: None,
                 });
                 NamedDatasourceCfg {
                     name: ds.name.unwrap_or("default".to_string()),
